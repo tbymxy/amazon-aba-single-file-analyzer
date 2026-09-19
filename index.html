@@ -44,7 +44,7 @@
     .viewport { position: relative; height: calc(100vh - 202px); min-height: 360px; max-height: 760px; overflow: auto; contain: strict; overscroll-behavior: contain; scrollbar-gutter: stable; }
     .spacer { width: 1px; opacity: 0; }
     .visible-rows { position: absolute; top: 0; left: 0; right: 0; will-change: transform; }
-    .data-row { height: 46px; border-bottom: 1px solid #eef2f7; color: #34435d; font-size: 12px; background: #fff; }
+    .data-row { height: 46px; border-bottom: 1px solid #eef2f7; color: #34435d; font-size: 13px; background: #fff; }
     .data-row:hover { background: #f8fbff; }
     .rank { color: #687995; font-variant-numeric: tabular-nums; }
     .term-cell { min-width: 0; display: flex; align-items: center; gap: 9px; }
@@ -53,7 +53,7 @@
     .trends-link img { width: 16px; height: 16px; display: block; }
     .amazon-link { overflow: hidden; color: #236fdc; font-weight: 650; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
     .amazon-link:hover { color: #1259bb; text-decoration: underline; }
-    .external { margin-left: 4px; color: #91a9ce; font-size: 10px; }
+    .external { margin-left: 4px; color: #91a9ce; font-size: 11px; }
     .percent { color: #334862; font-variant-numeric: tabular-nums; }
     .empty { height: 140px; display: grid; place-items: center; color: #8a97a9; font-size: 12px; }
     @media (max-width: 980px) {
@@ -87,8 +87,8 @@
         <label>搜索词<input id="keyword" placeholder="筛选关键词" autocomplete="off" /></label>
         <label>排名 ≥<input id="rankMin" class="numeric" type="number" min="1" placeholder="不限" /></label>
         <label>排名 ≤<input id="rankMax" class="numeric" type="number" min="1" placeholder="不限" /></label>
-        <label>TOP3点击 ≥ %<input id="clickMin" class="numeric" type="number" min="0" step="0.01" placeholder="不限" /></label>
-        <label>TOP3转化 ≥ %<input id="conversionMin" class="numeric" type="number" min="0" step="0.01" placeholder="不限" /></label>
+        <label>TOP3点击 ≤ %<input id="clickMax" class="numeric" type="number" min="0" step="0.01" placeholder="不限" /></label>
+        <label>TOP3转化 ≤ %<input id="conversionMax" class="numeric" type="number" min="0" step="0.01" placeholder="不限" /></label>
         <label class="file-button replace-file" for="fileInput">更换 CSV</label>
       </div>
       <div class="summary"><span id="fileSummary"></span><span id="resultSummary"></span></div>
@@ -190,8 +190,8 @@
     function applyFilters() {
       const keyword = $('#keyword').value.trim().toLocaleLowerCase();
       const rankMin = numberOrNull($('#rankMin').value), rankMax = numberOrNull($('#rankMax').value);
-      const clickMin = numberOrNull($('#clickMin').value), conversionMin = numberOrNull($('#conversionMin').value);
-      state.filtered = state.records.filter((row) => (!keyword || row.searchKey.includes(keyword)) && (rankMin == null || row.rank >= rankMin) && (rankMax == null || row.rank <= rankMax) && (clickMin == null || row.top3Click >= clickMin) && (conversionMin == null || row.top3Conversion >= conversionMin));
+      const clickMax = numberOrNull($('#clickMax').value), conversionMax = numberOrNull($('#conversionMax').value);
+      state.filtered = state.records.filter((row) => (!keyword || row.searchKey.includes(keyword)) && (rankMin == null || row.rank >= rankMin) && (rankMax == null || row.rank <= rankMax) && (clickMax == null || row.top3Click <= clickMax) && (conversionMax == null || row.top3Conversion <= conversionMax));
       $('#viewport').scrollTop = 0;
       $('#spacer').style.height = `${state.filtered.length * ROW_HEIGHT}px`;
       $('#empty').classList.toggle('hidden', state.filtered.length > 0);
@@ -220,7 +220,7 @@
       requestAnimationFrame(() => applyFilters());
     };
     $('#fileInput').addEventListener('change', (event) => { importFile(event.target.files[0]); event.target.value = ''; });
-    ['keyword', 'rankMin', 'rankMax', 'clickMin', 'conversionMin'].forEach((id) => $('#' + id).addEventListener('input', scheduleFilter));
+    ['keyword', 'rankMin', 'rankMax', 'clickMax', 'conversionMax'].forEach((id) => $('#' + id).addEventListener('input', scheduleFilter));
     $('#marketplace').addEventListener('change', () => { state.renderKey = ''; renderVisible(true); });
     $('#viewport').addEventListener('scroll', () => requestAnimationFrame(() => renderVisible()), { passive: true });
     window.addEventListener('resize', () => { state.renderKey = ''; requestAnimationFrame(() => renderVisible(true)); }, { passive: true });

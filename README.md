@@ -1,6 +1,6 @@
 # Amazon ABA 单文件网页分析器
 
-版本：1.1.0
+版本：1.1.1
 
 打开 `index.html`，在浏览器中选择一份 Amazon Brand Analytics「搜索分析 - 热门搜索词 - 简单报告」CSV。
 
