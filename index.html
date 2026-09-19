@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="在浏览器本地分析 Amazon ABA 热门搜索词 CSV" />
+  <title>Amazon ABA 热门搜索词分析器</title>
+  <style>
+    :root { font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; color: #17233b; background: #f4f6fa; font-synthesis: none; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 760px; }
+    button, input, select { font: inherit; }
+    .shell { width: min(1560px, 100%); margin: 0 auto; padding: 18px 26px 24px; }
+    .topbar { display: flex; align-items: center; gap: 12px; min-height: 46px; }
+    .logo { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 11px; color: #fff; background: linear-gradient(135deg, #3178f6, #6e58e8); font-size: 11px; font-weight: 800; letter-spacing: .5px; }
+    h1 { margin: 0; color: #17233b; font-size: 21px; letter-spacing: -.25px; }
+    .local-badge { margin-left: auto; padding: 5px 9px; border-radius: 20px; color: #39735f; background: #e7f6ef; font-size: 11px; font-weight: 700; }
+    .upload-panel { margin-top: 16px; min-height: 138px; display: grid; place-content: center; text-align: center; border: 1.5px dashed #b9cdf1; border-radius: 14px; background: #fff; box-shadow: 0 5px 18px #23386408; }
+    .upload-panel.dragging { border-color: #3178f6; background: #eef5ff; }
+    .upload-panel h2 { margin: 0 0 8px; font-size: 16px; }
+    .upload-panel p { margin: 0 0 13px; color: #7a889d; font-size: 12px; }
+    .file-input { display: none; }
+    .file-button { display: inline-flex; align-items: center; justify-content: center; min-height: 35px; padding: 8px 13px; border: 0; border-radius: 8px; color: #fff; background: #2f78f5; box-shadow: 0 3px 9px #3178f638; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .file-button:hover { background: #1968e9; }
+    .status { min-height: 18px; margin-top: 9px; color: #6e7e97; font-size: 12px; }
+    .status.error { color: #c64046; }
+    progress { display: block; width: 280px; height: 5px; margin: 7px auto 0; accent-color: #3178f6; }
+    .hidden { display: none !important; }
+    .workspace { margin-top: 13px; }
+    .toolbar { display: flex; align-items: end; gap: 9px; flex-wrap: wrap; padding: 12px; border: 1px solid #e4eaf3; border-radius: 12px; background: #fff; box-shadow: 0 3px 14px #23386408; }
+    .toolbar label { display: grid; gap: 4px; color: #7a879b; font-size: 10px; font-weight: 700; }
+    .toolbar input, .toolbar select { height: 34px; padding: 7px 8px; border: 1px solid #dce4ef; border-radius: 7px; color: #263852; background: #fff; font-size: 12px; outline-color: #3178f6; }
+    #keyword { width: 255px; }
+    #marketplace { width: 118px; }
+    .numeric { width: 112px; }
+    .replace-file { margin-left: auto; min-height: 34px; color: #315377; background: #edf3fb; box-shadow: none; }
+    .replace-file:hover { color: #1f66cd; background: #e3edfb; }
+    .summary { min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 3px; color: #718097; font-size: 11px; }
+    .summary strong { color: #344863; font-weight: 700; }
+    .grid { overflow: hidden; border: 1px solid #e1e8f2; border-radius: 12px; background: #fff; box-shadow: 0 4px 18px #23386408; }
+    .grid-header, .data-row { display: grid; grid-template-columns: 110px minmax(320px, 1fr) 170px 170px; align-items: center; }
+    .grid-header { height: 40px; padding-right: 12px; color: #77869f; background: #f8fafd; border-bottom: 1px solid #e5ebf3; font-size: 10px; font-weight: 700; letter-spacing: .2px; }
+    .grid-header > div, .data-row > div { padding: 0 14px; }
+    .viewport { position: relative; height: calc(100vh - 202px); min-height: 360px; max-height: 760px; overflow: auto; contain: strict; overscroll-behavior: contain; scrollbar-gutter: stable; }
+    .spacer { width: 1px; opacity: 0; }
+    .visible-rows { position: absolute; top: 0; left: 0; right: 0; will-change: transform; }
+    .data-row { height: 46px; border-bottom: 1px solid #eef2f7; color: #34435d; font-size: 12px; background: #fff; }
+    .data-row:hover { background: #f8fbff; }
+    .rank { color: #687995; font-variant-numeric: tabular-nums; }
+    .term-cell { min-width: 0; display: flex; align-items: center; gap: 9px; }
+    .trends-link { width: 22px; height: 22px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 6px; background: #f0f4fa; }
+    .trends-link:hover { background: #e3edfb; }
+    .trends-link img { width: 16px; height: 16px; display: block; }
+    .amazon-link { overflow: hidden; color: #236fdc; font-weight: 650; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+    .amazon-link:hover { color: #1259bb; text-decoration: underline; }
+    .external { margin-left: 4px; color: #91a9ce; font-size: 10px; }
+    .percent { color: #334862; font-variant-numeric: tabular-nums; }
+    .empty { height: 140px; display: grid; place-items: center; color: #8a97a9; font-size: 12px; }
+    @media (max-width: 980px) {
+      .shell { padding: 14px; }
+      .grid-header, .data-row { grid-template-columns: 95px minmax(260px, 1fr) 135px 135px; }
+      .viewport { height: calc(100vh - 240px); }
+      #keyword { width: 210px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="logo">ABA</div>
+      <h1>热门搜索词分析器</h1>
+      <span class="local-badge">本地处理</span>
+    </header>
+    <input id="fileInput" class="file-input" type="file" accept=".csv,text/csv" />
+    <section id="uploadPanel" class="upload-panel">
+      <div>
+        <h2>导入一份 ABA 热门搜索词 CSV</h2>
+        <p>拖入文件，或点击选择</p>
+        <label class="file-button" for="fileInput">选择 CSV</label>
+        <div id="parseStatus" class="status"></div>
+        <progress id="parseProgress" class="hidden" max="100" value="0"></progress>
+      </div>
+    </section>
+    <section id="workspace" class="workspace hidden">
+      <div class="toolbar">
+        <label>站点<select id="marketplace"></select></label>
+        <label>搜索词<input id="keyword" placeholder="筛选关键词" autocomplete="off" /></label>
+        <label>排名 ≥<input id="rankMin" class="numeric" type="number" min="1" placeholder="不限" /></label>
+        <label>排名 ≤<input id="rankMax" class="numeric" type="number" min="1" placeholder="不限" /></label>
+        <label>TOP3点击 ≥ %<input id="clickMin" class="numeric" type="number" min="0" step="0.01" placeholder="不限" /></label>
+        <label>TOP3转化 ≥ %<input id="conversionMin" class="numeric" type="number" min="0" step="0.01" placeholder="不限" /></label>
+        <label class="file-button replace-file" for="fileInput">更换 CSV</label>
+      </div>
+      <div class="summary"><span id="fileSummary"></span><span id="resultSummary"></span></div>
+      <div class="grid" role="table" aria-label="ABA 热门搜索词">
+        <div class="grid-header" role="row"><div>排名</div><div>搜索词</div><div>TOP3点击</div><div>TOP3转化</div></div>
+        <div id="viewport" class="viewport">
+          <div id="spacer" class="spacer"></div>
+          <div id="visibleRows" class="visible-rows"></div>
+          <div id="empty" class="empty hidden">没有符合筛选条件的数据</div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script>
+    const ROW_HEIGHT = 46, OVERSCAN = 10, TREND_ICON = 'https://www.google.com/s2/favicons?domain=trends.google.com&sz=32';
+    const MARKETPLACES = {
+      US: { name: '美国', domain: 'www.amazon.com', geo: 'US' }, CA: { name: '加拿大', domain: 'www.amazon.ca', geo: 'CA' },
+      MX: { name: '墨西哥', domain: 'www.amazon.com.mx', geo: 'MX' }, GB: { name: '英国', domain: 'www.amazon.co.uk', geo: 'GB' },
+      DE: { name: '德国', domain: 'www.amazon.de', geo: 'DE' }, FR: { name: '法国', domain: 'www.amazon.fr', geo: 'FR' },
+      IT: { name: '意大利', domain: 'www.amazon.it', geo: 'IT' }, ES: { name: '西班牙', domain: 'www.amazon.es', geo: 'ES' },
+      JP: { name: '日本', domain: 'www.amazon.co.jp', geo: 'JP' }, AU: { name: '澳大利亚', domain: 'www.amazon.com.au', geo: 'AU' }
+    };
+    const ALIASES = { UK: 'GB', US: 'US', CA: 'CA', MX: 'MX', GB: 'GB', DE: 'DE', FR: 'FR', IT: 'IT', ES: 'ES', JP: 'JP', AU: 'AU' };
+    const state = { records: [], filtered: [], fileName: '', renderKey: '', filterTimer: 0 };
+    const $ = (selector) => document.querySelector(selector);
+    const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
+    const numberOrNull = (value) => value.trim() === '' ? null : Number(value);
+    const formatPercent = (value) => `${value.toLocaleString('zh-CN', { maximumFractionDigits: 2 })}%`;
+    const detectMarketplace = (fileName) => ALIASES[/^([A-Za-z]{2})[_-]/.exec(fileName.trim())?.[1]?.toUpperCase()] || 'GB';
+    const amazonUrl = (term) => `https://${MARKETPLACES[$('#marketplace').value].domain}/s?k=${encodeURIComponent(term)}`;
+    const trendsUrl = (term) => `https://trends.google.com/trends/explore?geo=${MARKETPLACES[$('#marketplace').value].geo}&q=${encodeURIComponent(term)}`;
+    $('#marketplace').innerHTML = Object.entries(MARKETPLACES).map(([code, item]) => `<option value="${code}">${code} · ${item.name}</option>`).join('');
+
+    const workerCode = `
+      const normalize = (value) => String(value || '').trim().toLowerCase().replace(/\\s+/g, ' ');
+      const asNumber = (value) => Number(String(value || '').replaceAll('%', '').replaceAll(',', '').trim()) || 0;
+      function fieldIndexes(headers) {
+        const fields = headers.map((raw, index) => ({ index, value: normalize(raw) }));
+        const rank = fields.find((field) => field.value === '搜索频率排名' || field.value === 'search frequency rank');
+        const term = fields.find((field) => field.value === '搜索词' || field.value === 'search term');
+        const click = fields.filter((field) => field.value.includes('点击份额') || field.value.includes('click share')).slice(0, 3);
+        const conversion = fields.filter((field) => field.value.includes('转化贡献') || field.value.includes('conversion share')).slice(0, 3);
+        if (!rank || !term || click.length < 3 || conversion.length < 3) throw new Error('无法识别 ABA 核心字段，请确认选择的是热门搜索词简单报告 CSV。');
+        return { rank: rank.index, term: term.index, click: click.map((field) => field.index), conversion: conversion.map((field) => field.index) };
+      }
+      function parse(text, onRecord) {
+        let cell = '', record = [], quoted = false, index = 0;
+        const finishCell = () => { record.push(cell); cell = ''; };
+        const finishRecord = () => { finishCell(); onRecord(record, index); record = []; };
+        while (index < text.length) {
+          const char = text[index];
+          if (quoted) {
+            if (char === '"' && text[index + 1] === '"') { cell += '"'; index += 2; continue; }
+            if (char === '"') { quoted = false; index++; continue; }
+            cell += char; index++; continue;
+          }
+          if (char === '"' && cell === '') { quoted = true; index++; continue; }
+          if (char === ',') { finishCell(); index++; continue; }
+          if (char === '\\n') { finishRecord(); index++; continue; }
+          if (char === '\\r') { if (text[index + 1] === '\\n') index++; finishRecord(); index++; continue; }
+          cell += char; index++;
+        }
+        if (cell.length || record.length) finishRecord();
+      }
+      self.onmessage = async ({ data: file }) => {
+        try {
+          const text = new TextDecoder('utf-8').decode(await file.arrayBuffer());
+          let indexes = null, count = 0;
+          const records = [];
+          parse(text, (record, position) => {
+            if (!indexes) { try { indexes = fieldIndexes(record); } catch { return; } return; }
+            const rank = Number(record[indexes.rank]);
+            const term = String(record[indexes.term] || '').trim();
+            if (!Number.isFinite(rank) || rank < 1 || !term) return;
+            records.push({ rank, term, searchKey: term.toLocaleLowerCase(), top3Click: indexes.click.reduce((sum, field) => sum + asNumber(record[field]), 0), top3Conversion: indexes.conversion.reduce((sum, field) => sum + asNumber(record[field]), 0) });
+            count++;
+            if (count % 20000 === 0) self.postMessage({ type: 'progress', percent: Math.min(99, Math.round((position / Math.max(1, text.length)) * 100)), count });
+          });
+          if (!indexes) throw new Error('未找到 ABA 表头。');
+          records.sort((a, b) => a.rank - b.rank || a.term.localeCompare(b.term));
+          self.postMessage({ type: 'complete', records });
+        } catch (error) { self.postMessage({ type: 'error', message: error instanceof Error ? error.message : 'CSV 解析失败。' }); }
+      };
+    `;
+    const parser = new Worker(URL.createObjectURL(new Blob([workerCode], { type: 'text/javascript' })));
+
+    function renderVisible(force = false) {
+      const viewport = $('#viewport');
+      const first = Math.max(0, Math.floor(viewport.scrollTop / ROW_HEIGHT) - OVERSCAN);
+      const count = Math.ceil(viewport.clientHeight / ROW_HEIGHT) + OVERSCAN * 2;
+      const key = `${first}:${count}:${state.filtered.length}:${$('#marketplace').value}`;
+      if (!force && key === state.renderKey) return;
+      state.renderKey = key;
+      const visible = state.filtered.slice(first, first + count);
+      $('#visibleRows').style.transform = `translateY(${first * ROW_HEIGHT}px)`;
+      $('#visibleRows').innerHTML = visible.map((row) => `<div class="data-row" role="row"><div class="rank">${row.rank.toLocaleString()}</div><div class="term-cell"><a class="trends-link" href="${trendsUrl(row.term)}" target="_blank" rel="noopener noreferrer" title="在 Google Trends 查看：${escapeHtml(row.term)}"><img src="${TREND_ICON}" alt="Google Trends" loading="lazy"></a><a class="amazon-link" href="${amazonUrl(row.term)}" target="_blank" rel="noopener noreferrer" title="在 Amazon ${$('#marketplace').value} 搜索">${escapeHtml(row.term)}<span class="external">↗</span></a></div><div class="percent">${formatPercent(row.top3Click)}</div><div class="percent">${formatPercent(row.top3Conversion)}</div></div>`).join('');
+    }
+
+    function applyFilters() {
+      const keyword = $('#keyword').value.trim().toLocaleLowerCase();
+      const rankMin = numberOrNull($('#rankMin').value), rankMax = numberOrNull($('#rankMax').value);
+      const clickMin = numberOrNull($('#clickMin').value), conversionMin = numberOrNull($('#conversionMin').value);
+      state.filtered = state.records.filter((row) => (!keyword || row.searchKey.includes(keyword)) && (rankMin == null || row.rank >= rankMin) && (rankMax == null || row.rank <= rankMax) && (clickMin == null || row.top3Click >= clickMin) && (conversionMin == null || row.top3Conversion >= conversionMin));
+      $('#viewport').scrollTop = 0;
+      $('#spacer').style.height = `${state.filtered.length * ROW_HEIGHT}px`;
+      $('#empty').classList.toggle('hidden', state.filtered.length > 0);
+      $('#resultSummary').innerHTML = `<strong>${state.filtered.length.toLocaleString()}</strong> 条 · 滚动浏览全部结果`;
+      state.renderKey = '';
+      renderVisible(true);
+    }
+    function scheduleFilter() { window.clearTimeout(state.filterTimer); state.filterTimer = window.setTimeout(applyFilters, 160); }
+    function importFile(file) {
+      if (!file) return;
+      if (!file.name.toLowerCase().endsWith('.csv')) { $('#parseStatus').textContent = '请选择 CSV 文件'; $('#parseStatus').className = 'status error'; return; }
+      state.records = []; state.filtered = []; state.fileName = file.name; state.renderKey = '';
+      $('#marketplace').value = detectMarketplace(file.name);
+      $('#uploadPanel').classList.remove('hidden'); $('#workspace').classList.add('hidden');
+      $('#parseStatus').textContent = `正在解析 ${file.name}`; $('#parseStatus').className = 'status';
+      $('#parseProgress').value = 0; $('#parseProgress').classList.remove('hidden');
+      parser.postMessage(file);
+    }
+    parser.onmessage = ({ data }) => {
+      if (data.type === 'progress') { $('#parseStatus').textContent = `正在解析 ${data.count.toLocaleString()} 条`; $('#parseProgress').value = data.percent; return; }
+      $('#parseProgress').classList.add('hidden');
+      if (data.type === 'error') { $('#parseStatus').textContent = data.message; $('#parseStatus').className = 'status error'; return; }
+      state.records = data.records; state.filtered = data.records;
+      $('#fileSummary').innerHTML = `<strong>${escapeHtml(state.fileName)}</strong> · ${state.records.length.toLocaleString()} 条`;
+      $('#uploadPanel').classList.add('hidden'); $('#workspace').classList.remove('hidden');
+      requestAnimationFrame(() => applyFilters());
+    };
+    $('#fileInput').addEventListener('change', (event) => { importFile(event.target.files[0]); event.target.value = ''; });
+    ['keyword', 'rankMin', 'rankMax', 'clickMin', 'conversionMin'].forEach((id) => $('#' + id).addEventListener('input', scheduleFilter));
+    $('#marketplace').addEventListener('change', () => { state.renderKey = ''; renderVisible(true); });
+    $('#viewport').addEventListener('scroll', () => requestAnimationFrame(() => renderVisible()), { passive: true });
+    window.addEventListener('resize', () => { state.renderKey = ''; requestAnimationFrame(() => renderVisible(true)); }, { passive: true });
+    const uploadPanel = $('#uploadPanel');
+    ['dragenter', 'dragover'].forEach((name) => uploadPanel.addEventListener(name, (event) => { event.preventDefault(); uploadPanel.classList.add('dragging'); }));
+    ['dragleave', 'drop'].forEach((name) => uploadPanel.addEventListener(name, (event) => { event.preventDefault(); uploadPanel.classList.remove('dragging'); }));
+    uploadPanel.addEventListener('drop', (event) => importFile(event.dataTransfer.files[0]));
+  </script>
+</body>
+</html>
