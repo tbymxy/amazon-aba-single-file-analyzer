@@ -10,7 +10,7 @@
     * { box-sizing: border-box; }
     body { margin: 0; min-width: 760px; }
     button, input, select { font: inherit; }
-    .shell { width: min(1560px, 100%); margin: 0 auto; padding: 18px 26px 24px; }
+    .shell { width: min(1760px, 100%); margin: 0 auto; padding: 18px 26px 24px; }
     .topbar { display: flex; align-items: center; gap: 12px; min-height: 46px; }
     .logo { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 11px; color: #fff; background: linear-gradient(135deg, #3178f6, #6e58e8); font-size: 11px; font-weight: 800; letter-spacing: .5px; }
     h1 { margin: 0; color: #17233b; font-size: 21px; letter-spacing: -.25px; }
@@ -37,29 +37,35 @@
     .replace-file:hover { color: #1f66cd; background: #e3edfb; }
     .summary { min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 3px; color: #718097; font-size: 11px; }
     .summary strong { color: #344863; font-weight: 700; }
-    .grid { overflow: hidden; border: 1px solid #e1e8f2; border-radius: 12px; background: #fff; box-shadow: 0 4px 18px #23386408; }
-    .grid-header, .data-row { display: grid; grid-template-columns: 110px minmax(320px, 1fr) 170px 170px; align-items: center; }
-    .grid-header { height: 40px; padding-right: 12px; color: #77869f; background: #f8fafd; border-bottom: 1px solid #e5ebf3; font-size: 10px; font-weight: 700; letter-spacing: .2px; }
-    .grid-header > div, .data-row > div { padding: 0 14px; }
-    .viewport { position: relative; height: calc(100vh - 202px); min-height: 360px; max-height: 760px; overflow: auto; contain: strict; overscroll-behavior: contain; scrollbar-gutter: stable; }
-    .spacer { width: 1px; opacity: 0; }
-    .visible-rows { position: absolute; top: 0; left: 0; right: 0; will-change: transform; }
-    .data-row { height: 46px; border-bottom: 1px solid #eef2f7; color: #34435d; font-size: 13px; background: #fff; }
+    .grid { overflow-x: auto; border: 1px solid #e1e8f2; border-radius: 12px; background: #fff; box-shadow: 0 4px 18px #23386408; }
+    .grid-header, .data-row { min-width: 1220px; display: grid; grid-template-columns: 76px minmax(230px, 1fr) 108px 108px 20px 76px minmax(230px, 1fr) 108px 108px; align-items: center; }
+    .grid-header { height: 40px; color: #77869f; background: #f8fafd; border-bottom: 1px solid #e5ebf3; font-size: 10px; font-weight: 700; letter-spacing: .2px; }
+    .grid-header > div, .data-row > div { padding: 0 10px; }
+    .data-row { height: 42px; border-bottom: 1px solid #eef2f7; color: #34435d; font-size: 13px; background: #fff; }
     .data-row:hover { background: #f8fbff; }
+    .data-row:last-child { border-bottom: 0; }
+    .column-divider { align-self: stretch; padding: 0 !important; border-left: 1px solid #dfe7f1; background: #f8fafd; }
     .rank { color: #687995; font-variant-numeric: tabular-nums; }
     .term-cell { min-width: 0; display: flex; align-items: center; gap: 9px; }
     .trends-link { width: 22px; height: 22px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 6px; background: #f0f4fa; }
     .trends-link:hover { background: #e3edfb; }
     .trends-link img { width: 16px; height: 16px; display: block; }
-    .amazon-link { overflow: hidden; color: #236fdc; font-weight: 650; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
-    .amazon-link:hover { color: #1259bb; text-decoration: underline; }
-    .external { margin-left: 4px; color: #91a9ce; font-size: 11px; }
+    .amazon-link { overflow: hidden; color: #52746f; font-weight: 650; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+    .amazon-link:hover { color: #315c56; text-decoration: underline; }
     .percent { color: #334862; font-variant-numeric: tabular-nums; }
     .empty { height: 140px; display: grid; place-items: center; color: #8a97a9; font-size: 12px; }
+    .pagination { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; margin-top: 14px; }
+    .page-menu { display: flex; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap; }
+    .page-button { min-width: 30px; height: 30px; padding: 0 7px; border: 1px solid #dce4ed; border-radius: 6px; color: #5c6c79; background: #fff; font-size: 11px; cursor: pointer; }
+    .page-button:hover:not(:disabled) { color: #315c56; border-color: #91aaa5; background: #f3f8f7; }
+    .page-button.active { color: #fff; border-color: #52746f; background: #52746f; font-weight: 700; }
+    .page-button:disabled { color: #bcc5cf; cursor: default; }
+    .ellipsis { min-width: 23px; color: #8b98a8; text-align: center; font-size: 11px; }
+    .page-jump { display: flex; align-items: center; gap: 6px; color: #718097; font-size: 11px; }
+    .page-jump input { width: 72px; height: 30px; padding: 5px 7px; border: 1px solid #dce4ed; border-radius: 6px; color: #34435d; background: #fff; outline-color: #52746f; }
+    .page-go { height: 30px; padding: 0 10px; border: 1px solid #91aaa5; border-radius: 6px; color: #315c56; background: #f3f8f7; font-size: 11px; cursor: pointer; }
     @media (max-width: 980px) {
       .shell { padding: 14px; }
-      .grid-header, .data-row { grid-template-columns: 95px minmax(260px, 1fr) 135px 135px; }
-      .viewport { height: calc(100vh - 240px); }
       #keyword { width: 210px; }
     }
   </style>
@@ -93,17 +99,19 @@
       </div>
       <div class="summary"><span id="fileSummary"></span><span id="resultSummary"></span></div>
       <div class="grid" role="table" aria-label="ABA 热门搜索词">
-        <div class="grid-header" role="row"><div>排名</div><div>搜索词</div><div>TOP3点击</div><div>TOP3转化</div></div>
-        <div id="viewport" class="viewport">
-          <div id="spacer" class="spacer"></div>
-          <div id="visibleRows" class="visible-rows"></div>
-          <div id="empty" class="empty hidden">没有符合筛选条件的数据</div>
-        </div>
+        <div class="grid-header" role="row"><div>排名</div><div>搜索词</div><div>TOP3点击</div><div>TOP3转化</div><div class="column-divider" aria-hidden="true"></div><div>排名</div><div>搜索词</div><div>TOP3点击</div><div>TOP3转化</div></div>
+        <div id="dataRows"></div>
+        <div id="empty" class="empty hidden">没有符合筛选条件的数据</div>
       </div>
+      <nav id="pagination" class="pagination hidden" aria-label="数据分页">
+        <div id="pageMenu" class="page-menu"></div>
+        <div class="page-jump"><span>跳至</span><input id="pageInput" type="number" min="1" inputmode="numeric" aria-label="输入页码" /><button id="pageGo" class="page-go" type="button">跳转</button></div>
+      </nav>
     </section>
   </main>
   <script>
-    const ROW_HEIGHT = 46, OVERSCAN = 10, TREND_ICON = 'https://www.google.com/s2/favicons?domain=trends.google.com&sz=32';
+    const ROWS_PER_PAGE = 100, RECORDS_PER_PAGE = ROWS_PER_PAGE * 2, PAGE_WINDOW = 21;
+    const TREND_ICON = 'https://www.google.com/s2/favicons?domain=trends.google.com&sz=32';
     const MARKETPLACES = {
       US: { name: '美国', domain: 'www.amazon.com', geo: 'US' }, CA: { name: '加拿大', domain: 'www.amazon.ca', geo: 'CA' },
       MX: { name: '墨西哥', domain: 'www.amazon.com.mx', geo: 'MX' }, GB: { name: '英国', domain: 'www.amazon.co.uk', geo: 'GB' },
@@ -112,7 +120,7 @@
       JP: { name: '日本', domain: 'www.amazon.co.jp', geo: 'JP' }, AU: { name: '澳大利亚', domain: 'www.amazon.com.au', geo: 'AU' }
     };
     const ALIASES = { UK: 'GB', US: 'US', CA: 'CA', MX: 'MX', GB: 'GB', DE: 'DE', FR: 'FR', IT: 'IT', ES: 'ES', JP: 'JP', AU: 'AU' };
-    const state = { records: [], filtered: [], fileName: '', renderKey: '', filterTimer: 0 };
+    const state = { records: [], filtered: [], fileName: '', page: 1, filterTimer: 0 };
     const $ = (selector) => document.querySelector(selector);
     const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
     const numberOrNull = (value) => value.trim() === '' ? null : Number(value);
@@ -175,16 +183,53 @@
     `;
     const parser = new Worker(URL.createObjectURL(new Blob([workerCode], { type: 'text/javascript' })));
 
-    function renderVisible(force = false) {
-      const viewport = $('#viewport');
-      const first = Math.max(0, Math.floor(viewport.scrollTop / ROW_HEIGHT) - OVERSCAN);
-      const count = Math.ceil(viewport.clientHeight / ROW_HEIGHT) + OVERSCAN * 2;
-      const key = `${first}:${count}:${state.filtered.length}:${$('#marketplace').value}`;
-      if (!force && key === state.renderKey) return;
-      state.renderKey = key;
-      const visible = state.filtered.slice(first, first + count);
-      $('#visibleRows').style.transform = `translateY(${first * ROW_HEIGHT}px)`;
-      $('#visibleRows').innerHTML = visible.map((row) => `<div class="data-row" role="row"><div class="rank">${row.rank.toLocaleString()}</div><div class="term-cell"><a class="trends-link" href="${trendsUrl(row.term)}" target="_blank" rel="noopener noreferrer" title="在 Google Trends 查看：${escapeHtml(row.term)}"><img src="${TREND_ICON}" alt="Google Trends" loading="lazy"></a><a class="amazon-link" href="${amazonUrl(row.term)}" target="_blank" rel="noopener noreferrer" title="在 Amazon ${$('#marketplace').value} 搜索">${escapeHtml(row.term)}<span class="external">↗</span></a></div><div class="percent">${formatPercent(row.top3Click)}</div><div class="percent">${formatPercent(row.top3Conversion)}</div></div>`).join('');
+    function recordCells(row) {
+      if (!row) return '<div></div><div></div><div></div><div></div>';
+      return `<div class="rank">${row.rank.toLocaleString()}</div><div class="term-cell"><a class="trends-link" href="${trendsUrl(row.term)}" target="_blank" rel="noopener noreferrer" title="在 Google Trends 查看：${escapeHtml(row.term)}"><img src="${TREND_ICON}" alt="Google Trends" loading="lazy"></a><a class="amazon-link" href="${amazonUrl(row.term)}" target="_blank" rel="noopener noreferrer" title="在 Amazon ${$('#marketplace').value} 搜索">${escapeHtml(row.term)}</a></div><div class="percent">${formatPercent(row.top3Click)}</div><div class="percent">${formatPercent(row.top3Conversion)}</div>`;
+    }
+
+    function pageButton(page, current) {
+      return `<button class="page-button${page === current ? ' active' : ''}" type="button" data-page="${page}"${page === current ? ' aria-current="page"' : ''}>${page.toLocaleString()}</button>`;
+    }
+
+    function renderPagination(totalPages) {
+      if (!state.filtered.length) { $('#pagination').classList.add('hidden'); return; }
+      $('#pagination').classList.remove('hidden');
+      let start = Math.max(1, state.page - Math.floor(PAGE_WINDOW / 2));
+      let end = Math.min(totalPages, start + PAGE_WINDOW - 1);
+      start = Math.max(1, end - PAGE_WINDOW + 1);
+      const menu = [`<button class="page-button" type="button" data-page="${Math.max(1, state.page - 1)}"${state.page === 1 ? ' disabled' : ''} aria-label="上一页">‹</button>`];
+      menu.push(pageButton(1, state.page));
+      if (start > 2) menu.push('<span class="ellipsis">…</span>');
+      for (let page = Math.max(2, start); page <= Math.min(totalPages - 1, end); page++) menu.push(pageButton(page, state.page));
+      if (end < totalPages - 1) menu.push('<span class="ellipsis">…</span>');
+      if (totalPages > 1) menu.push(pageButton(totalPages, state.page));
+      menu.push(`<button class="page-button" type="button" data-page="${Math.min(totalPages, state.page + 1)}"${state.page === totalPages ? ' disabled' : ''} aria-label="下一页">›</button>`);
+      $('#pageMenu').innerHTML = menu.join('');
+      $('#pageInput').max = String(totalPages);
+      $('#pageInput').placeholder = `1-${totalPages}`;
+    }
+
+    function renderPage(scrollToTop = false) {
+      const totalPages = Math.max(1, Math.ceil(state.filtered.length / RECORDS_PER_PAGE));
+      state.page = Math.min(totalPages, Math.max(1, state.page));
+      const start = (state.page - 1) * RECORDS_PER_PAGE;
+      const left = state.filtered.slice(start, start + ROWS_PER_PAGE);
+      const right = state.filtered.slice(start + ROWS_PER_PAGE, start + RECORDS_PER_PAGE);
+      const rowCount = Math.max(left.length, right.length);
+      $('#dataRows').innerHTML = Array.from({ length: rowCount }, (_, index) => `<div class="data-row" role="row">${recordCells(left[index])}<div class="column-divider" aria-hidden="true"></div>${recordCells(right[index])}</div>`).join('');
+      $('#empty').classList.toggle('hidden', state.filtered.length > 0);
+      $('#resultSummary').innerHTML = `<strong>${state.filtered.length.toLocaleString()}</strong> 条 · 第 <strong>${state.page.toLocaleString()}</strong> / ${totalPages.toLocaleString()} 页 · 每页左右各100条`;
+      renderPagination(totalPages);
+      if (scrollToTop) $('.grid').scrollIntoView({ block: 'start' });
+    }
+
+    function goToPage(page) {
+      const totalPages = Math.max(1, Math.ceil(state.filtered.length / RECORDS_PER_PAGE));
+      if (!Number.isFinite(page)) return;
+      state.page = Math.min(totalPages, Math.max(1, Math.trunc(page)));
+      $('#pageInput').value = '';
+      renderPage(true);
     }
 
     function applyFilters() {
@@ -192,18 +237,14 @@
       const rankMin = numberOrNull($('#rankMin').value), rankMax = numberOrNull($('#rankMax').value);
       const clickMax = numberOrNull($('#clickMax').value), conversionMax = numberOrNull($('#conversionMax').value);
       state.filtered = state.records.filter((row) => (!keyword || row.searchKey.includes(keyword)) && (rankMin == null || row.rank >= rankMin) && (rankMax == null || row.rank <= rankMax) && (clickMax == null || row.top3Click <= clickMax) && (conversionMax == null || row.top3Conversion <= conversionMax));
-      $('#viewport').scrollTop = 0;
-      $('#spacer').style.height = `${state.filtered.length * ROW_HEIGHT}px`;
-      $('#empty').classList.toggle('hidden', state.filtered.length > 0);
-      $('#resultSummary').innerHTML = `<strong>${state.filtered.length.toLocaleString()}</strong> 条 · 滚动浏览全部结果`;
-      state.renderKey = '';
-      renderVisible(true);
+      state.page = 1;
+      renderPage();
     }
     function scheduleFilter() { window.clearTimeout(state.filterTimer); state.filterTimer = window.setTimeout(applyFilters, 160); }
     function importFile(file) {
       if (!file) return;
       if (!file.name.toLowerCase().endsWith('.csv')) { $('#parseStatus').textContent = '请选择 CSV 文件'; $('#parseStatus').className = 'status error'; return; }
-      state.records = []; state.filtered = []; state.fileName = file.name; state.renderKey = '';
+      state.records = []; state.filtered = []; state.fileName = file.name; state.page = 1;
       $('#marketplace').value = detectMarketplace(file.name);
       $('#uploadPanel').classList.remove('hidden'); $('#workspace').classList.add('hidden');
       $('#parseStatus').textContent = `正在解析 ${file.name}`; $('#parseStatus').className = 'status';
@@ -221,9 +262,13 @@
     };
     $('#fileInput').addEventListener('change', (event) => { importFile(event.target.files[0]); event.target.value = ''; });
     ['keyword', 'rankMin', 'rankMax', 'clickMax', 'conversionMax'].forEach((id) => $('#' + id).addEventListener('input', scheduleFilter));
-    $('#marketplace').addEventListener('change', () => { state.renderKey = ''; renderVisible(true); });
-    $('#viewport').addEventListener('scroll', () => requestAnimationFrame(() => renderVisible()), { passive: true });
-    window.addEventListener('resize', () => { state.renderKey = ''; requestAnimationFrame(() => renderVisible(true)); }, { passive: true });
+    $('#marketplace').addEventListener('change', () => renderPage());
+    $('#pagination').addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-page]');
+      if (button && !button.disabled) goToPage(Number(button.dataset.page));
+    });
+    $('#pageGo').addEventListener('click', () => goToPage(Number($('#pageInput').value)));
+    $('#pageInput').addEventListener('keydown', (event) => { if (event.key === 'Enter') goToPage(Number(event.currentTarget.value)); });
     const uploadPanel = $('#uploadPanel');
     ['dragenter', 'dragover'].forEach((name) => uploadPanel.addEventListener(name, (event) => { event.preventDefault(); uploadPanel.classList.add('dragging'); }));
     ['dragleave', 'drop'].forEach((name) => uploadPanel.addEventListener(name, (event) => { event.preventDefault(); uploadPanel.classList.remove('dragging'); }));
