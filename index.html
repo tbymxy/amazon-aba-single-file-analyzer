@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="在浏览器本地分析 Amazon ABA 热门搜索词 CSV" />
+  <meta name="theme-color" content="#315c56" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <title>Amazon ABA 热门搜索词分析器</title>
   <style>
     :root { font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; color: #17233b; background: #f4f6fa; font-synthesis: none; }
@@ -30,11 +33,20 @@
     progress { display: block; width: 280px; height: 5px; margin: 7px auto 0; accent-color: #3178f6; }
     .hidden { display: none !important; }
     .workspace { margin-top: 13px; }
+    .report-controls { display: flex; align-items: end; gap: 9px; flex-wrap: wrap; margin-bottom: 10px; padding: 12px; border: 1px solid #dce8e5; border-radius: 12px; background: #f9fcfb; box-shadow: 0 3px 14px #23386408; }
+    .report-controls label { display: grid; gap: 4px; color: #667d78; font-size: 10px; font-weight: 700; }
+    .report-controls select { height: 34px; padding: 7px 8px; border: 1px solid #cededb; border-radius: 7px; color: #294c47; background: #fff; font-size: 12px; outline-color: #527d75; }
+    #marketplace { width: 112px; }
+    #rangeStart, #rangeEnd { width: 218px; }
+    #currentReport, #compareReport { width: 238px; }
+    .storage-status { align-self: center; margin-left: auto; color: #73827f; font-size: 11px; white-space: nowrap; }
+    .report-actions { display: flex; align-items: center; gap: 7px; }
+    .delete-button { height: 34px; padding: 0 11px; border: 1px solid #e2c8cb; border-radius: 7px; color: #9a4047; background: #fff7f7; font-size: 11px; font-weight: 700; cursor: pointer; }
+    .delete-button:hover { color: #fff; background: #b34c55; }
     .toolbar { display: flex; align-items: end; gap: 9px; flex-wrap: wrap; padding: 12px; border: 1px solid #e4eaf3; border-radius: 12px; background: #fff; box-shadow: 0 3px 14px #23386408; }
     .toolbar label { display: grid; gap: 4px; color: #7a879b; font-size: 10px; font-weight: 700; }
     .toolbar input, .toolbar select { height: 34px; padding: 7px 8px; border: 1px solid #dce4ef; border-radius: 7px; color: #263852; background: #fff; font-size: 12px; outline-color: #3178f6; }
     #keyword { width: 255px; }
-    #marketplace { width: 118px; }
     .numeric { width: 112px; }
     .toolbar-actions { margin-left: auto; display: flex; align-items: center; gap: 7px; }
     .replace-file { min-height: 34px; color: #315377; background: #edf3fb; box-shadow: none; }
@@ -94,22 +106,31 @@
     <header class="topbar">
       <div class="logo">ABA</div>
       <h1>热门搜索词分析器</h1>
-      <span class="local-badge">本地处理</span>
+      <span class="local-badge">本地持久化 · 1.4.0</span>
     </header>
     <input id="fileInput" class="file-input" type="file" accept=".csv,text/csv" />
     <input id="compareInput" class="file-input" type="file" accept=".csv,text/csv" multiple />
+    <input id="batchInput" class="file-input" type="file" accept=".csv,text/csv" multiple />
     <section id="uploadPanel" class="upload-panel">
       <div>
         <h2>导入 ABA 热门搜索词 CSV</h2>
-        <p>导入一份浏览，或导入两份相同站点周报进行对比</p>
-        <div class="import-actions"><label class="file-button" for="fileInput">导入一份</label><label class="file-button compare-button" for="compareInput">导入两份对比</label></div>
+        <p>可批量导入多站点、多周次报告；数据仅保存在当前浏览器</p>
+        <div class="import-actions"><label class="file-button" for="fileInput">导入一份</label><label class="file-button compare-button" for="compareInput">导入两份对比</label><label class="file-button compare-button" for="batchInput">批量导入</label></div>
         <div id="parseStatus" class="status"></div>
         <progress id="parseProgress" class="hidden" max="100" value="0"></progress>
       </div>
     </section>
     <section id="workspace" class="workspace hidden">
-      <div class="toolbar">
+      <div class="report-controls">
         <label>站点<select id="marketplace"></select></label>
+        <label>起始周<select id="rangeStart"></select></label>
+        <label>结束周<select id="rangeEnd"></select></label>
+        <label>查看周<select id="currentReport"></select></label>
+        <label>对比周<select id="compareReport"><option value="">不对比</option></select></label>
+        <span id="storageStatus" class="storage-status">正在读取本地报告…</span>
+        <div class="report-actions"><label class="file-button replace-file compare-button" for="batchInput">继续导入</label><button id="deleteReport" class="delete-button" type="button">删除当前</button></div>
+      </div>
+      <div class="toolbar">
         <label>搜索词<input id="keyword" placeholder="筛选关键词" autocomplete="off" /></label>
         <label>排名 ≥<input id="rankMin" class="numeric" type="number" min="1" placeholder="不限" /></label>
         <label>排名 ≤<input id="rankMax" class="numeric" type="number" min="1" placeholder="不限" /></label>
@@ -160,9 +181,138 @@
     const trendsUrl = (term) => `https://trends.google.com/trends/explore?geo=${MARKETPLACES[$('#marketplace').value].geo}&q=${encodeURIComponent(term)}`;
     $('#marketplace').innerHTML = Object.entries(MARKETPLACES).map(([code, item]) => `<option value="${code}">${code} · ${item.name}</option>`).join('');
 
+    const DATABASE_NAME = 'amazon-aba-pwa';
+    const DATABASE_VERSION = 1;
+    const REPORT_DIRECTORY = 'aba-reports';
+    let databasePromise = null;
+    let catalog = [];
+    let loadJob = null;
+
+    function openDatabase() {
+      if (databasePromise) return databasePromise;
+      databasePromise = new Promise((resolve, reject) => {
+        const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
+        request.onupgradeneeded = () => {
+          const database = request.result;
+          if (!database.objectStoreNames.contains('reports')) {
+            const store = database.createObjectStore('reports', { keyPath: 'id' });
+            store.createIndex('site', 'site', { unique: false });
+            store.createIndex('endDate', 'endDate', { unique: false });
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      return databasePromise;
+    }
+
+    async function reportStore(mode, action) {
+      const database = await openDatabase();
+      return new Promise((resolve, reject) => {
+        const transaction = database.transaction('reports', mode);
+        const request = action(transaction.objectStore('reports'));
+        let result;
+        request.onsuccess = () => { result = request.result; };
+        request.onerror = () => reject(request.error);
+        transaction.oncomplete = () => resolve(result);
+        transaction.onerror = () => reject(transaction.error || request.error);
+        transaction.onabort = () => reject(transaction.error || new Error('本地数据库事务已中止。'));
+      });
+    }
+
+    const getStoredReports = () => reportStore('readonly', (store) => store.getAll());
+    const putStoredReport = (report) => reportStore('readwrite', (store) => store.put(report));
+    const deleteStoredReportMeta = (id) => reportStore('readwrite', (store) => store.delete(id));
+    const formatBytes = (bytes) => {
+      if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+      return `${(bytes / (1024 ** index)).toLocaleString('zh-CN', { maximumFractionDigits: index > 1 ? 2 : 0 })} ${units[index]}`;
+    };
+
+    async function requestPersistentStorage() {
+      if (!navigator.storage?.persist) return false;
+      try { return await navigator.storage.persist(); } catch { return false; }
+    }
+
+    async function updateStorageStatus() {
+      if (!navigator.storage?.estimate) { $('#storageStatus').textContent = `${catalog.length} 份报告`; return; }
+      try {
+        const estimate = await navigator.storage.estimate();
+        const persisted = navigator.storage.persisted ? await navigator.storage.persisted() : false;
+        $('#storageStatus').textContent = `${catalog.length} 份报告 · ${formatBytes(estimate.usage || 0)} / ${formatBytes(estimate.quota || 0)}${persisted ? ' · 已持久化' : ' · 建议允许持久化'}`;
+      } catch { $('#storageStatus').textContent = `${catalog.length} 份报告`; }
+    }
+
+    async function deleteStoredReportFile(fileName) {
+      if (!fileName || !navigator.storage?.getDirectory) return;
+      try {
+        const root = await navigator.storage.getDirectory();
+        const directory = await root.getDirectoryHandle(REPORT_DIRECTORY, { create: true });
+        await directory.removeEntry(fileName);
+      } catch (error) { if (error?.name !== 'NotFoundError') throw error; }
+    }
+
     const workerCode = `
       const normalize = (value) => String(value || '').trim().toLowerCase().replace(/\\s+/g, ' ');
       const asNumber = (value) => Number(String(value || '').replaceAll('%', '').replaceAll(',', '').trim()) || 0;
+      const bytesToHex = (bytes) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      async function reportDirectory() {
+        if (!navigator.storage?.getDirectory) return null;
+        const root = await navigator.storage.getDirectory();
+        return root.getDirectoryHandle('aba-reports', { create: true });
+      }
+      async function saveReport(site, period, hash, records, token) {
+        if (typeof CompressionStream === 'undefined') throw new Error('当前浏览器不支持本地压缩存储，请使用最新版 Chrome、Edge 或安装后的 PWA。');
+        const directory = await reportDirectory();
+        if (!directory) throw new Error('当前浏览器不支持本地持久化存储。');
+        const fileName = site + '_' + period.endDate + '_' + hash.slice(0, 24) + '.jsonl.gz';
+        const handle = await directory.getFileHandle(fileName, { create: true });
+        const destination = await handle.createWritable();
+        const compression = new CompressionStream('gzip');
+        const piping = compression.readable.pipeTo(destination);
+        const writer = compression.writable.getWriter();
+        const encoder = new TextEncoder();
+        for (let start = 0; start < records.length; start += 5000) {
+          const block = records.slice(start, start + 5000).map((row) => JSON.stringify([row.rank, row.term, row.top3Click, row.top3Conversion])).join('\\n') + '\\n';
+          await writer.write(encoder.encode(block));
+          if (start && start % 50000 === 0) self.postMessage({ type: 'storage-progress', token, count: start, totalRecords: records.length });
+        }
+        await writer.close();
+        await piping;
+        return fileName;
+      }
+      async function loadReport(fileName, token, index, total) {
+        if (typeof DecompressionStream === 'undefined') throw new Error('当前浏览器不支持读取本地压缩报告。');
+        const directory = await reportDirectory();
+        if (!directory) throw new Error('当前浏览器不支持本地持久化存储。');
+        const handle = await directory.getFileHandle(fileName);
+        const file = await handle.getFile();
+        const reader = file.stream().pipeThrough(new DecompressionStream('gzip')).getReader();
+        const decoder = new TextDecoder('utf-8');
+        const records = [];
+        let pending = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          pending += decoder.decode(value, { stream: true });
+          const lines = pending.split('\\n');
+          pending = lines.pop() || '';
+          for (const line of lines) {
+            if (!line) continue;
+            const item = JSON.parse(line);
+            const term = String(item[1]);
+            records.push({ rank: Number(item[0]), term, searchKey: normalize(term), top3Click: Number(item[2]), top3Conversion: Number(item[3]) });
+          }
+          if (records.length && records.length % 50000 < 5000) self.postMessage({ type: 'load-progress', token, index, total, count: records.length });
+        }
+        if (pending.trim()) {
+          const item = JSON.parse(pending);
+          const term = String(item[1]);
+          records.push({ rank: Number(item[0]), term, searchKey: normalize(term), top3Click: Number(item[2]), top3Conversion: Number(item[3]) });
+        }
+        return records;
+      }
       function reportPeriod(firstRecord) {
         const source = firstRecord.join(' ').replace(/^\\uFEFF/, '');
         const match = /(?:周|週|week|woche|semaine|settimana|semana)\\s*(\\d{1,2})\\s*\\|\\s*(\\d{4}-\\d{2}-\\d{2})\\s*-\\s*(\\d{4}-\\d{2}-\\d{2})/i.exec(source);
@@ -199,9 +349,16 @@
         if (cell.length || record.length) finishRecord();
       }
       self.onmessage = async ({ data }) => {
-        const { file, index, total } = data;
+        const { action = 'parse', file, index, total, token, site, storageFile } = data;
         try {
-          const text = new TextDecoder('utf-8').decode(await file.arrayBuffer());
+          if (action === 'load') {
+            const records = await loadReport(storageFile, token, index, total);
+            self.postMessage({ type: 'loaded', token, index, total, records });
+            return;
+          }
+          const buffer = await file.arrayBuffer();
+          const hash = bytesToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', buffer)));
+          const text = new TextDecoder('utf-8').decode(buffer);
           let indexes = null, count = 0, sourceRow = 0, period = null;
           const records = [];
           parse(text, (record, position) => {
@@ -217,8 +374,9 @@
           if (!period) throw new Error('无法从 CSV 第一行识别周数与日期。');
           if (!indexes) throw new Error('未找到 ABA 表头。');
           records.sort((a, b) => a.rank - b.rank || a.term.localeCompare(b.term));
-          self.postMessage({ type: 'complete', index, total, period, records });
-        } catch (error) { self.postMessage({ type: 'error', index, total, message: error instanceof Error ? error.message : 'CSV 解析失败。' }); }
+          const savedFile = await saveReport(site, period, hash, records, token);
+          self.postMessage({ type: 'complete', token, index, total, period, fileHash: hash, storageFile: savedFile, rowCount: records.length });
+        } catch (error) { self.postMessage({ type: 'error', token, index, total, message: error instanceof Error ? error.message : 'CSV 解析失败。' }); }
       };
     `;
     const parser = new Worker(URL.createObjectURL(new Blob([workerCode], { type: 'text/javascript' })));
@@ -331,83 +489,259 @@
     function scheduleFilter() { window.clearTimeout(state.filterTimer); state.filterTimer = window.setTimeout(applyFilters, 160); }
 
     let importJob = null;
+    const createToken = () => crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+    const reportTime = (report) => Date.parse(report.endDate) || 0;
+    const newestFirst = (a, b) => reportTime(b) - reportTime(a) || b.weekNumber - a.weekNumber || String(b.importedAt).localeCompare(String(a.importedAt));
+    const oldestFirst = (a, b) => -newestFirst(a, b);
+    const reportLabel = (report) => `${report.label} · ${Number(report.rowCount || 0).toLocaleString()} 条`;
+
+    function setImportStatus(message, error = false) {
+      $('#parseStatus').textContent = message;
+      $('#parseStatus').className = `status${error ? ' error' : ''}`;
+    }
+
     function importError(message) {
       importJob = null;
-      $('#uploadPanel').classList.remove('hidden'); $('#workspace').classList.add('hidden');
       $('#parseProgress').classList.add('hidden');
-      $('#parseStatus').textContent = message; $('#parseStatus').className = 'status error';
+      $('#uploadPanel').classList.remove('hidden');
+      $('#workspace').classList.toggle('hidden', catalog.length === 0);
+      setImportStatus(message, true);
+      updateStorageStatus();
+    }
+
+    function siteForFile(file, fallback) {
+      const detected = marketplaceFromFilename(file.name);
+      if (detected) return detected;
+      const answer = window.prompt(`无法从文件名识别站点：\n${file.name}\n\n请输入 US、CA、MX、GB、DE、FR、IT、ES、JP 或 AU：`, fallback || 'GB');
+      return answer ? ALIASES[answer.trim().toUpperCase()] || null : null;
     }
 
     function startImport(files, mode) {
       const selected = Array.from(files || []);
-      const required = mode === 'compare' ? 2 : 1;
-      if (selected.length !== required) { importError(mode === 'compare' ? '请选择两份 CSV 报告文件。' : '请选择一份 CSV 报告文件。'); return; }
-      if (selected.some((file) => !file.name.toLowerCase().endsWith('.csv'))) { importError('请选择 CSV 文件。'); return; }
-      let marketplace = detectMarketplace(selected[0].name);
-      if (mode === 'compare') {
-        const sites = selected.map((file) => marketplaceFromFilename(file.name));
-        if (!sites[0] || !sites[1]) { importError('无法从文件名前缀识别站点，请使用 US、CA、MX、GB、DE、FR、IT、ES、JP 或 AU 前缀。'); return; }
-        if (sites[0] !== sites[1]) { importError(`两份报告站点不同（${sites[0]} / ${sites[1]}），请重新选择相同站点的文件。`); return; }
-        marketplace = sites[0];
+      if ((mode === 'single' && selected.length !== 1) || (mode === 'compare' && selected.length !== 2) || (mode === 'batch' && selected.length < 1)) {
+        importError(mode === 'compare' ? '请选择两份 CSV 报告文件。' : '请选择至少一份 CSV 报告文件。');
+        return;
       }
-      state.records = []; state.filtered = []; state.fileName = selected.map((file) => file.name).join(' / '); state.mode = mode; state.newPeriod = null; state.oldPeriod = null; state.sorts = []; state.page = 1; state.pageBeforeFilter = 1; state.filtering = false;
-      if (mode === 'single') { $('#changeMin').value = ''; $('#changeMax').value = ''; }
-      $('#marketplace').value = marketplace;
-      $('#uploadPanel').classList.remove('hidden'); $('#workspace').classList.add('hidden');
-      $('#parseStatus').className = 'status';
-      $('#parseProgress').value = 0; $('#parseProgress').classList.remove('hidden');
-      importJob = { files: selected, mode, results: [], current: 0 };
+      if (selected.some((file) => !file.name.toLowerCase().endsWith('.csv'))) { importError('请只选择 CSV 文件。'); return; }
+      const fallback = catalog.length ? ($('#marketplace').value || 'GB') : 'GB';
+      const entries = selected.map((file) => ({ file, site: siteForFile(file, fallback) }));
+      if (entries.some((entry) => !entry.site)) { importError('导入已取消：有文件未指定有效站点。'); return; }
+      if (mode === 'compare' && entries[0].site !== entries[1].site) { importError(`两份报告站点不同（${entries[0].site} / ${entries[1].site}），请重新选择相同站点的文件。`); return; }
+      loadJob = null;
+      requestPersistentStorage().then(updateStorageStatus);
+      $('#uploadPanel').classList.remove('hidden');
+      $('#workspace').classList.add('hidden');
+      $('#parseProgress').value = 0;
+      $('#parseProgress').classList.remove('hidden');
+      setImportStatus('正在准备导入…');
+      importJob = { token: createToken(), files: entries, mode, current: 0, imported: [], skipped: 0 };
       parseNextFile();
     }
 
     function parseNextFile() {
-      const file = importJob.files[importJob.current];
-      $('#parseStatus').textContent = `正在解析第 ${importJob.current + 1}/${importJob.files.length} 份：${file.name}`;
+      if (!importJob) return;
+      const entry = importJob.files[importJob.current];
+      setImportStatus(`正在解析第 ${importJob.current + 1}/${importJob.files.length} 份：${entry.file.name}`);
       $('#parseProgress').value = 0;
-      parser.postMessage({ file, index: importJob.current, total: importJob.files.length });
+      parser.postMessage({ action: 'parse', file: entry.file, site: entry.site, index: importJob.current, total: importJob.files.length, token: importJob.token });
     }
 
-    function finishImport() {
-      const results = importJob.results;
-      const mode = importJob.mode;
-      importJob = null;
-      if (mode === 'single') {
-        const result = results[0];
-        state.mode = 'single'; state.newPeriod = result.period; state.oldPeriod = null;
-        state.records = result.records.map((row) => ({ ...row, newRank: row.rank, oldRank: 0, change: 0 }));
-        $('#fileSummary').innerHTML = `<strong>${escapeHtml(result.fileName)}</strong> · ${escapeHtml(result.period.label)} · ${state.records.length.toLocaleString()} 条`;
+    async function acceptImportedReport(data) {
+      const job = importJob;
+      const entry = job.files[data.index];
+      const meta = {
+        id: `${entry.site}|${data.period.endDate}|${data.fileHash}`,
+        site: entry.site,
+        weekNumber: data.period.weekNumber,
+        startDate: data.period.startDate,
+        endDate: data.period.endDate,
+        label: data.period.label,
+        fileHash: data.fileHash,
+        fileName: entry.file.name,
+        storageFile: data.storageFile,
+        rowCount: data.rowCount,
+        sourceSize: entry.file.size,
+        importedAt: new Date().toISOString()
+      };
+      const duplicate = catalog.find((report) => report.id === meta.id);
+      if (duplicate) {
+        job.imported.push(duplicate);
+        job.skipped++;
       } else {
-        const firstTime = Date.parse(results[0].period.endDate);
-        const secondTime = Date.parse(results[1].period.endDate);
-        const newer = firstTime > secondTime || (firstTime === secondTime && results[0].period.weekNumber > results[1].period.weekNumber) ? results[0] : results[1];
-        const older = newer === results[0] ? results[1] : results[0];
-        const oldRanks = new Map();
-        for (const row of older.records) if (!oldRanks.has(row.searchKey) || row.rank < oldRanks.get(row.searchKey)) oldRanks.set(row.searchKey, row.rank);
-        state.mode = 'compare'; state.newPeriod = newer.period; state.oldPeriod = older.period;
-        state.records = newer.records.map((row) => { const oldRank = oldRanks.get(row.searchKey) || 0; return { ...row, newRank: row.rank, oldRank, change: oldRank - row.rank }; });
-        $('#fileSummary').innerHTML = `<strong>${escapeHtml(newer.period.label)}</strong> 对比 ${escapeHtml(older.period.label)} · ${MARKETPLACES[$('#marketplace').value].name} · ${state.records.length.toLocaleString()} 条`;
+        const sameWeek = catalog.filter((report) => report.site === meta.site && report.endDate === meta.endDate);
+        if (sameWeek.length && !window.confirm(`${meta.site} 站 ${meta.label} 已有不同版本。\n\n点击“确定”替换旧版本，点击“取消”保留旧版本。`)) {
+          await deleteStoredReportFile(meta.storageFile);
+          job.skipped++;
+        } else {
+          await putStoredReport(meta);
+          for (const oldReport of sameWeek) {
+            await deleteStoredReportMeta(oldReport.id);
+            await deleteStoredReportFile(oldReport.storageFile);
+          }
+          catalog = catalog.filter((report) => !sameWeek.some((oldReport) => oldReport.id === report.id));
+          catalog.push(meta);
+          job.imported.push(meta);
+        }
       }
+      job.current++;
+      if (job.current < job.files.length) parseNextFile();
+      else await finishImport(job);
+    }
+
+    async function finishImport(job) {
+      if (importJob !== job) return;
+      importJob = null;
+      $('#parseProgress').classList.add('hidden');
+      const imported = [...job.imported].sort(newestFirst);
+      const suffix = job.skipped ? `，跳过 ${job.skipped} 份` : '';
+      setImportStatus(`导入完成：${imported.length} 份可用报告${suffix}`);
+      let primaryId = null, compareId = null;
+      if (job.mode === 'single') primaryId = imported[0]?.id || null;
+      if (job.mode === 'compare' && imported.length === 2) { primaryId = imported[0].id; compareId = imported[1].id; }
+      if (job.mode !== 'compare') $('#compareReport').value = '';
+      await refreshCatalog({ primaryId, compareId });
+    }
+
+    function fillSelect(select, reports, selectedValue, includeNone = false) {
+      const options = includeNone ? ['<option value="">不对比</option>'] : [];
+      options.push(...reports.map((report) => `<option value="${escapeHtml(report.id)}">${escapeHtml(reportLabel(report))}</option>`));
+      select.innerHTML = options.join('');
+      if (reports.some((report) => report.id === selectedValue)) select.value = selectedValue;
+      else if (!includeNone && reports.length) select.value = reports[0].id;
+      else select.value = '';
+    }
+
+    function rebuildReportSelectors(primaryId = null, compareId = null) {
+      const site = $('#marketplace').value;
+      const reports = catalog.filter((report) => report.site === site).sort(oldestFirst);
+      const start = $('#rangeStart').value || reports[0]?.endDate;
+      const end = $('#rangeEnd').value || reports.at(-1)?.endDate;
+      const visible = reports.filter((report) => report.endDate >= start && report.endDate <= end).sort(newestFirst);
+      fillSelect($('#currentReport'), visible, primaryId || $('#currentReport').value);
+      const primary = catalog.find((report) => report.id === $('#currentReport').value);
+      const older = primary ? visible.filter((report) => report.endDate < primary.endDate) : [];
+      fillSelect($('#compareReport'), older, compareId || $('#compareReport').value, true);
+    }
+
+    function rebuildSiteView({ primaryId = null, compareId = null, site = null } = {}) {
+      const primary = catalog.find((report) => report.id === primaryId);
+      const desiredSite = primary?.site || site || $('#marketplace').value || catalog[0]?.site;
+      const sites = Object.keys(MARKETPLACES).filter((code) => catalog.some((report) => report.site === code));
+      $('#marketplace').innerHTML = sites.map((code) => `<option value="${code}">${code} · ${MARKETPLACES[code].name}</option>`).join('');
+      $('#marketplace').value = sites.includes(desiredSite) ? desiredSite : sites[0];
+      const reports = catalog.filter((report) => report.site === $('#marketplace').value).sort(oldestFirst);
+      const rangeOptions = reports.map((report) => `<option value="${report.endDate}">${escapeHtml(report.label)}</option>`).join('');
+      $('#rangeStart').innerHTML = rangeOptions;
+      $('#rangeEnd').innerHTML = rangeOptions;
+      $('#rangeStart').value = reports[0]?.endDate || '';
+      $('#rangeEnd').value = reports.at(-1)?.endDate || '';
+      rebuildReportSelectors(primaryId, compareId);
+    }
+
+    async function refreshCatalog(options = {}) {
+      catalog = (await getStoredReports()).filter((report) => report?.id && report?.storageFile && MARKETPLACES[report.site]).sort(newestFirst);
+      await updateStorageStatus();
+      if (!catalog.length) {
+        state.records = []; state.filtered = [];
+        $('#uploadPanel').classList.remove('hidden');
+        $('#workspace').classList.add('hidden');
+        if (!$('#parseStatus').textContent) setImportStatus('报告仅保存在当前浏览器本地，可一次选择多份 CSV。');
+        return;
+      }
+      const fallback = catalog[0];
+      const siteFallback = options.site ? catalog.find((report) => report.site === options.site) : null;
+      rebuildSiteView({ primaryId: options.primaryId || siteFallback?.id || fallback.id, compareId: options.compareId || null, site: options.site });
+      await loadSelectedReports();
+    }
+
+    async function loadSelectedReports() {
+      const primary = catalog.find((report) => report.id === $('#currentReport').value);
+      const comparison = catalog.find((report) => report.id === $('#compareReport').value);
+      if (!primary) return;
+      loadJob = { token: createToken(), reports: comparison ? [primary, comparison] : [primary], results: [], current: 0 };
+      state.records = []; state.filtered = []; state.page = 1; state.pageBeforeFilter = 1; state.filtering = false;
+      $('#workspace').classList.remove('hidden');
+      $('#workspace').setAttribute('aria-busy', 'true');
+      $('#uploadPanel').classList.add('hidden');
+      $('#dataRows').innerHTML = '';
+      $('#empty').classList.remove('hidden');
+      $('#empty').textContent = '正在从本地存储加载报告…';
+      $('#pagination').classList.add('hidden');
+      $('#fileSummary').innerHTML = `<strong>${escapeHtml(primary.label)}</strong> · 正在加载`;
+      sendNextLoad();
+    }
+
+    function sendNextLoad() {
+      if (!loadJob) return;
+      const report = loadJob.reports[loadJob.current];
+      $('#storageStatus').textContent = `正在加载 ${loadJob.current + 1}/${loadJob.reports.length}：${report.label}`;
+      parser.postMessage({ action: 'load', storageFile: report.storageFile, token: loadJob.token, index: loadJob.current, total: loadJob.reports.length });
+    }
+
+    function finishLoad(job) {
+      if (loadJob !== job) return;
+      loadJob = null;
+      const primary = job.reports[0], comparison = job.reports[1] || null;
+      const primaryRows = job.results[0];
+      if (comparison) {
+        const oldRanks = new Map();
+        for (const row of job.results[1]) if (!oldRanks.has(row.searchKey) || row.rank < oldRanks.get(row.searchKey)) oldRanks.set(row.searchKey, row.rank);
+        state.mode = 'compare'; state.newPeriod = primary; state.oldPeriod = comparison;
+        state.records = primaryRows.map((row) => { const oldRank = oldRanks.get(row.searchKey) || 0; return { ...row, newRank: row.rank, oldRank, change: oldRank - row.rank }; });
+        $('#fileSummary').innerHTML = `<strong>${escapeHtml(primary.label)}</strong> 对比 ${escapeHtml(comparison.label)} · ${MARKETPLACES[primary.site].name}`;
+      } else {
+        state.mode = 'single'; state.newPeriod = primary; state.oldPeriod = null;
+        state.records = primaryRows.map((row) => ({ ...row, newRank: row.rank, oldRank: 0, change: 0 }));
+        $('#fileSummary').innerHTML = `<strong>${escapeHtml(primary.fileName)}</strong> · ${escapeHtml(primary.label)}`;
+      }
+      state.fileName = primary.fileName;
       state.filtered = state.records;
+      $('#empty').textContent = '没有符合筛选条件的数据';
+      $('#workspace').removeAttribute('aria-busy');
       updateReportHeader();
-      $('#uploadPanel').classList.add('hidden'); $('#workspace').classList.remove('hidden');
+      updateStorageStatus();
       requestAnimationFrame(() => applyFilters());
     }
 
-    parser.onmessage = ({ data }) => {
-      if (!importJob) return;
-      if (data.type === 'progress') { $('#parseStatus').textContent = `正在解析第 ${data.index + 1}/${data.total} 份：${importJob.files[data.index].name} · ${data.count.toLocaleString()} 条`; $('#parseProgress').value = data.percent; return; }
-      if (data.type === 'error') { importError(`第 ${data.index + 1} 份文件解析失败：${data.message}`); return; }
-      importJob.results[data.index] = { fileName: importJob.files[data.index].name, period: data.period, records: data.records };
-      importJob.current++;
-      if (importJob.current < importJob.files.length) parseNextFile();
-      else { $('#parseProgress').classList.add('hidden'); finishImport(); }
+    async function deleteCurrentReport() {
+      const report = catalog.find((item) => item.id === $('#currentReport').value);
+      if (!report || !window.confirm(`确定删除当前浏览器中的报告？\n\n${report.site} · ${report.label}\n${report.fileName}`)) return;
+      await deleteStoredReportMeta(report.id);
+      await deleteStoredReportFile(report.storageFile);
+      await refreshCatalog({ site: report.site });
+    }
+
+    parser.onmessage = async ({ data }) => {
+      if (importJob && data.token === importJob.token) {
+        if (data.type === 'progress') { setImportStatus(`正在解析第 ${data.index + 1}/${data.total} 份：${importJob.files[data.index].file.name} · ${data.count.toLocaleString()} 条`); $('#parseProgress').value = data.percent; return; }
+        if (data.type === 'storage-progress') { setImportStatus(`正在压缩保存第 ${importJob.current + 1}/${importJob.files.length} 份 · ${data.count.toLocaleString()} / ${data.totalRecords.toLocaleString()} 条`); $('#parseProgress').value = Math.round((data.count / data.totalRecords) * 100); return; }
+        if (data.type === 'error') { importError(`第 ${data.index + 1} 份文件处理失败：${data.message}`); return; }
+        if (data.type === 'complete') { try { await acceptImportedReport(data); } catch (error) { importError(`保存报告失败：${error.message || error}`); } }
+        return;
+      }
+      if (loadJob && data.token === loadJob.token) {
+        if (data.type === 'load-progress') { $('#storageStatus').textContent = `正在加载 ${data.index + 1}/${data.total} · ${data.count.toLocaleString()} 条`; return; }
+        if (data.type === 'error') { loadJob = null; $('#workspace').removeAttribute('aria-busy'); $('#empty').textContent = `加载失败：${data.message}`; $('#empty').classList.remove('hidden'); updateStorageStatus(); return; }
+        if (data.type === 'loaded') {
+          const job = loadJob;
+          job.results[data.index] = data.records;
+          job.current++;
+          if (job.current < job.reports.length) sendNextLoad(); else finishLoad(job);
+        }
+      }
     };
 
     $('#fileInput').addEventListener('change', (event) => { startImport(event.target.files, 'single'); event.target.value = ''; });
     $('#compareInput').addEventListener('change', (event) => { startImport(event.target.files, 'compare'); event.target.value = ''; });
+    $('#batchInput').addEventListener('change', (event) => { startImport(event.target.files, 'batch'); event.target.value = ''; });
     FILTER_IDS.forEach((id) => $('#' + id).addEventListener('input', scheduleFilter));
     $('#resetFilters').addEventListener('click', () => { window.clearTimeout(state.filterTimer); FILTER_IDS.forEach((id) => { $('#' + id).value = ''; }); applyFilters(); });
-    $('#marketplace').addEventListener('change', () => renderPage());
+    $('#marketplace').addEventListener('change', () => { rebuildSiteView({ site: $('#marketplace').value }); loadSelectedReports(); });
+    $('#rangeStart').addEventListener('change', () => { if ($('#rangeStart').value > $('#rangeEnd').value) $('#rangeEnd').value = $('#rangeStart').value; rebuildReportSelectors(); loadSelectedReports(); });
+    $('#rangeEnd').addEventListener('change', () => { if ($('#rangeEnd').value < $('#rangeStart').value) $('#rangeStart').value = $('#rangeEnd').value; rebuildReportSelectors(); loadSelectedReports(); });
+    $('#currentReport').addEventListener('change', () => { rebuildReportSelectors($('#currentReport').value); loadSelectedReports(); });
+    $('#compareReport').addEventListener('change', loadSelectedReports);
+    $('#deleteReport').addEventListener('click', () => deleteCurrentReport().catch((error) => window.alert(`删除失败：${error.message || error}`)));
     $('.grid-header').addEventListener('click', (event) => { const header = event.target.closest('[data-sort]'); if (header) toggleSort(header.dataset.sort); });
     $('#pagination').addEventListener('click', (event) => {
       const button = event.target.closest('button[data-page]');
@@ -418,7 +752,10 @@
     const uploadPanel = $('#uploadPanel');
     ['dragenter', 'dragover'].forEach((name) => uploadPanel.addEventListener(name, (event) => { event.preventDefault(); uploadPanel.classList.add('dragging'); }));
     ['dragleave', 'drop'].forEach((name) => uploadPanel.addEventListener(name, (event) => { event.preventDefault(); uploadPanel.classList.remove('dragging'); }));
-    uploadPanel.addEventListener('drop', (event) => { const files = event.dataTransfer.files; startImport(files, files.length === 2 ? 'compare' : 'single'); });
+    uploadPanel.addEventListener('drop', (event) => { const files = event.dataTransfer.files; startImport(files, files.length === 1 ? 'single' : 'batch'); });
+
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('./sw.js').catch(() => {});
+    refreshCatalog().catch((error) => importError(`无法读取本地报告库：${error.message || error}`));
   </script>
 </body>
 </html>

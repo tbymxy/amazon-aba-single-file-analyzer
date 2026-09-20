@@ -1,0 +1,19 @@
+{
+  "name": "Amazon ABA 热门搜索词分析器",
+  "short_name": "ABA 分析器",
+  "description": "在当前浏览器本地持久化保存并分析 Amazon ABA 热门搜索词周报。",
+  "lang": "zh-CN",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f6fa",
+  "theme_color": "#315c56",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
