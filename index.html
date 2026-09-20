@@ -50,23 +50,25 @@
     .trends-link { width: 22px; height: 22px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 6px; background: #f0f4fa; }
     .trends-link:hover { background: #e3edfb; }
     .trends-link img { width: 16px; height: 16px; display: block; }
-    .amazon-link { overflow: hidden; color: #52746f; font-weight: 650; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
-    .amazon-link:hover { color: #315c56; text-decoration: underline; }
+    .amazon-link { overflow: hidden; color: #006d77; font-weight: 650; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+    .amazon-link:hover { color: #004f57; text-decoration: underline; }
     .percent { color: #334862; font-variant-numeric: tabular-nums; }
     .empty { height: 140px; display: grid; place-items: center; color: #8a97a9; font-size: 12px; }
-    .pagination { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; margin-top: 14px; }
-    .page-menu { display: flex; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap; }
+    .pagination { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 14px; margin-top: 14px; }
+    .page-menu { grid-column: 2; display: flex; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap; }
     .page-button { min-width: 30px; height: 30px; padding: 0 7px; border: 1px solid #dce4ed; border-radius: 6px; color: #5c6c79; background: #fff; font-size: 11px; cursor: pointer; }
     .page-button:hover:not(:disabled) { color: #315c56; border-color: #91aaa5; background: #f3f8f7; }
     .page-button.active { color: #fff; border-color: #52746f; background: #52746f; font-weight: 700; }
     .page-button:disabled { color: #bcc5cf; cursor: default; }
     .ellipsis { min-width: 23px; color: #8b98a8; text-align: center; font-size: 11px; }
-    .page-jump { display: flex; align-items: center; gap: 6px; color: #718097; font-size: 11px; }
+    .page-jump { grid-column: 3; justify-self: end; display: flex; align-items: center; gap: 6px; color: #718097; font-size: 11px; }
     .page-jump input { width: 72px; height: 30px; padding: 5px 7px; border: 1px solid #dce4ed; border-radius: 6px; color: #34435d; background: #fff; outline-color: #52746f; }
     .page-go { height: 30px; padding: 0 10px; border: 1px solid #91aaa5; border-radius: 6px; color: #315c56; background: #f3f8f7; font-size: 11px; cursor: pointer; }
     @media (max-width: 980px) {
       .shell { padding: 14px; }
       #keyword { width: 210px; }
+      .pagination { display: flex; justify-content: center; flex-wrap: wrap; }
+      .page-jump { margin-left: auto; }
     }
   </style>
 </head>
@@ -120,7 +122,7 @@
       JP: { name: '日本', domain: 'www.amazon.co.jp', geo: 'JP' }, AU: { name: '澳大利亚', domain: 'www.amazon.com.au', geo: 'AU' }
     };
     const ALIASES = { UK: 'GB', US: 'US', CA: 'CA', MX: 'MX', GB: 'GB', DE: 'DE', FR: 'FR', IT: 'IT', ES: 'ES', JP: 'JP', AU: 'AU' };
-    const state = { records: [], filtered: [], fileName: '', page: 1, filterTimer: 0 };
+    const state = { records: [], filtered: [], fileName: '', page: 1, pageBeforeFilter: 1, filtering: false, filterTimer: 0 };
     const $ = (selector) => document.querySelector(selector);
     const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
     const numberOrNull = (value) => value.trim() === '' ? null : Number(value);
@@ -228,6 +230,7 @@
       const totalPages = Math.max(1, Math.ceil(state.filtered.length / RECORDS_PER_PAGE));
       if (!Number.isFinite(page)) return;
       state.page = Math.min(totalPages, Math.max(1, Math.trunc(page)));
+      if (!state.filtering) state.pageBeforeFilter = state.page;
       $('#pageInput').value = '';
       renderPage(true);
     }
@@ -236,15 +239,18 @@
       const keyword = $('#keyword').value.trim().toLocaleLowerCase();
       const rankMin = numberOrNull($('#rankMin').value), rankMax = numberOrNull($('#rankMax').value);
       const clickMax = numberOrNull($('#clickMax').value), conversionMax = numberOrNull($('#conversionMax').value);
+      const hasFilters = Boolean(keyword) || rankMin != null || rankMax != null || clickMax != null || conversionMax != null;
+      if (hasFilters && !state.filtering) state.pageBeforeFilter = state.page;
       state.filtered = state.records.filter((row) => (!keyword || row.searchKey.includes(keyword)) && (rankMin == null || row.rank >= rankMin) && (rankMax == null || row.rank <= rankMax) && (clickMax == null || row.top3Click <= clickMax) && (conversionMax == null || row.top3Conversion <= conversionMax));
-      state.page = 1;
+      state.page = hasFilters ? 1 : (state.filtering ? state.pageBeforeFilter : state.page);
+      state.filtering = hasFilters;
       renderPage();
     }
     function scheduleFilter() { window.clearTimeout(state.filterTimer); state.filterTimer = window.setTimeout(applyFilters, 160); }
     function importFile(file) {
       if (!file) return;
       if (!file.name.toLowerCase().endsWith('.csv')) { $('#parseStatus').textContent = '请选择 CSV 文件'; $('#parseStatus').className = 'status error'; return; }
-      state.records = []; state.filtered = []; state.fileName = file.name; state.page = 1;
+      state.records = []; state.filtered = []; state.fileName = file.name; state.page = 1; state.pageBeforeFilter = 1; state.filtering = false;
       $('#marketplace').value = detectMarketplace(file.name);
       $('#uploadPanel').classList.remove('hidden'); $('#workspace').classList.add('hidden');
       $('#parseStatus').textContent = `正在解析 ${file.name}`; $('#parseStatus').className = 'status';
