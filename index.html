@@ -39,12 +39,14 @@
     .toolbar-actions { margin-left: auto; display: flex; align-items: center; gap: 7px; }
     .replace-file { min-height: 34px; color: #315377; background: #edf3fb; box-shadow: none; }
     .replace-file:hover { color: #1f66cd; background: #e3edfb; }
+    .reset-button { height: 34px; padding: 0 13px; border: 1px solid #d8e1eb; border-radius: 7px; color: #566a7b; background: #f7f9fc; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .reset-button:hover { color: #9a4047; border-color: #dfb9bd; background: #fff4f5; }
     .summary { min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 3px; color: #718097; font-size: 11px; }
     .summary strong { color: #344863; font-weight: 700; }
     .grid { overflow-x: auto; border: 1px solid #e1e8f2; border-radius: 12px; background: #fff; box-shadow: 0 4px 18px #23386408; }
-    .grid-header, .data-row { min-width: 1220px; display: grid; grid-template-columns: 76px minmax(230px, 1fr) 108px 108px 20px 76px minmax(230px, 1fr) 108px 108px; align-items: center; }
-    .workspace.compare-mode .grid-header, .workspace.compare-mode .data-row { grid-template-columns: 66px 66px 82px minmax(190px, 1fr) 96px 96px 20px 66px 66px 82px minmax(190px, 1fr) 96px 96px; }
-    .grid-header { height: 40px; color: #77869f; background: #f8fafd; border-bottom: 1px solid #e5ebf3; font-size: 10px; font-weight: 700; letter-spacing: .2px; }
+    .grid-header, .data-row { min-width: 1260px; display: grid; grid-template-columns: 92px minmax(230px, 1fr) 108px 108px 20px 92px minmax(230px, 1fr) 108px 108px; align-items: center; }
+    .workspace.compare-mode .grid-header, .workspace.compare-mode .data-row { min-width: 1320px; grid-template-columns: 88px 88px 100px minmax(180px, 1fr) 96px 96px 20px 88px 88px 100px minmax(180px, 1fr) 96px 96px; }
+    .grid-header { height: 42px; color: #66778e; background: #f8fafd; border-bottom: 1px solid #e5ebf3; font-size: 12px; font-weight: 700; letter-spacing: .2px; }
     .grid-header > div, .data-row > div { padding: 0 10px; }
     .data-row { height: 42px; border-bottom: 1px solid #eef2f7; color: #34435d; font-size: 13px; background: #fff; }
     .data-row:hover { background: #f8fbff; }
@@ -53,9 +55,9 @@
     .compare-column, .compare-filter { display: none !important; }
     .workspace.compare-mode .compare-column { display: block !important; }
     .workspace.compare-mode .compare-filter { display: grid !important; }
-    .sortable { cursor: pointer; user-select: none; transition: color .15s, background .15s; }
+    .sortable { position: relative; padding-right: 31px !important; cursor: pointer; user-select: none; white-space: nowrap; transition: color .15s, background .15s; }
     .sortable:hover { color: #006d77; background: #eef6f4; }
-    .sort-indicator { display: inline-block; min-width: 22px; margin-left: 3px; color: #006d77; font-size: 9px; }
+    .sort-indicator { position: absolute; top: 50%; right: 8px; min-width: 20px; color: #006d77; font-size: 10px; text-align: right; transform: translateY(-50%); }
     .rank { color: #687995; font-variant-numeric: tabular-nums; }
     .term-cell { min-width: 0; display: flex; align-items: center; gap: 9px; }
     .trends-link { width: 22px; height: 22px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 6px; background: #f0f4fa; }
@@ -115,14 +117,15 @@
         <label>TOP3转化 ≤ %<input id="conversionMax" class="numeric" type="number" min="0" step="0.01" placeholder="不限" /></label>
         <label class="compare-filter">涨跌 ≥<input id="changeMin" class="numeric" type="number" step="1" placeholder="不限" /></label>
         <label class="compare-filter">涨跌 ≤<input id="changeMax" class="numeric" type="number" step="1" placeholder="不限" /></label>
+        <button id="resetFilters" class="reset-button" type="button">重置</button>
         <div class="toolbar-actions"><label class="file-button replace-file" for="fileInput">更换单份</label><label class="file-button replace-file compare-button" for="compareInput">更换对比</label></div>
       </div>
       <div class="summary"><span id="fileSummary"></span><span id="resultSummary"></span></div>
       <div class="grid" role="table" aria-label="ABA 热门搜索词">
         <div class="grid-header" role="row">
-          <div class="sortable" data-sort="newRank" title="点击切换升序、降序或取消排序">排名<br><span class="new-week-label"></span><span class="sort-indicator"></span></div><div class="compare-column sortable" data-sort="oldRank" title="点击切换升序、降序或取消排序">排名<br><span class="old-week-label"></span><span class="sort-indicator"></span></div><div class="compare-column sortable" data-sort="change" title="旧排名减新排名；点击切换排序">涨跌幅度<span class="sort-indicator"></span></div><div>搜索词</div><div>TOP3点击</div><div>TOP3转化</div>
+          <div class="sortable" data-sort="newRank" title="点击切换升序、降序或取消排序">排名 <span class="new-week-label"></span><span class="sort-indicator"></span></div><div class="compare-column sortable" data-sort="oldRank" title="点击切换升序、降序或取消排序">排名 <span class="old-week-label"></span><span class="sort-indicator"></span></div><div class="compare-column sortable" data-sort="change" title="旧排名减新排名；点击切换排序">涨跌幅度<span class="sort-indicator"></span></div><div>搜索词</div><div>TOP3点击</div><div>TOP3转化</div>
           <div class="column-divider" aria-hidden="true"></div>
-          <div class="sortable" data-sort="newRank" title="点击切换升序、降序或取消排序">排名<br><span class="new-week-label"></span><span class="sort-indicator"></span></div><div class="compare-column sortable" data-sort="oldRank" title="点击切换升序、降序或取消排序">排名<br><span class="old-week-label"></span><span class="sort-indicator"></span></div><div class="compare-column sortable" data-sort="change" title="旧排名减新排名；点击切换排序">涨跌幅度<span class="sort-indicator"></span></div><div>搜索词</div><div>TOP3点击</div><div>TOP3转化</div>
+          <div class="sortable" data-sort="newRank" title="点击切换升序、降序或取消排序">排名 <span class="new-week-label"></span><span class="sort-indicator"></span></div><div class="compare-column sortable" data-sort="oldRank" title="点击切换升序、降序或取消排序">排名 <span class="old-week-label"></span><span class="sort-indicator"></span></div><div class="compare-column sortable" data-sort="change" title="旧排名减新排名；点击切换排序">涨跌幅度<span class="sort-indicator"></span></div><div>搜索词</div><div>TOP3点击</div><div>TOP3转化</div>
         </div>
         <div id="dataRows"></div>
         <div id="empty" class="empty hidden">没有符合筛选条件的数据</div>
@@ -145,6 +148,7 @@
     };
     const ALIASES = { UK: 'GB', US: 'US', CA: 'CA', MX: 'MX', GB: 'GB', DE: 'DE', FR: 'FR', IT: 'IT', ES: 'ES', JP: 'JP', AU: 'AU' };
     const state = { records: [], filtered: [], fileName: '', mode: 'single', newPeriod: null, oldPeriod: null, sorts: [], page: 1, pageBeforeFilter: 1, filtering: false, filterTimer: 0 };
+    const FILTER_IDS = ['keyword', 'rankMin', 'rankMax', 'clickMax', 'conversionMax', 'changeMin', 'changeMax'];
     const $ = (selector) => document.querySelector(selector);
     const $$ = (selector) => document.querySelectorAll(selector);
     const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
@@ -401,7 +405,8 @@
 
     $('#fileInput').addEventListener('change', (event) => { startImport(event.target.files, 'single'); event.target.value = ''; });
     $('#compareInput').addEventListener('change', (event) => { startImport(event.target.files, 'compare'); event.target.value = ''; });
-    ['keyword', 'rankMin', 'rankMax', 'clickMax', 'conversionMax', 'changeMin', 'changeMax'].forEach((id) => $('#' + id).addEventListener('input', scheduleFilter));
+    FILTER_IDS.forEach((id) => $('#' + id).addEventListener('input', scheduleFilter));
+    $('#resetFilters').addEventListener('click', () => { window.clearTimeout(state.filterTimer); FILTER_IDS.forEach((id) => { $('#' + id).value = ''; }); applyFilters(); });
     $('#marketplace').addEventListener('change', () => renderPage());
     $('.grid-header').addEventListener('click', (event) => { const header = event.target.closest('[data-sort]'); if (header) toggleSort(header.dataset.sort); });
     $('#pagination').addEventListener('click', (event) => {
