@@ -56,8 +56,8 @@
     .summary { min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 3px; color: #718097; font-size: 11px; }
     .summary strong { color: #344863; font-weight: 700; }
     .grid { overflow-x: auto; border: 1px solid #e1e8f2; border-radius: 12px; background: #fff; box-shadow: 0 4px 18px #23386408; }
-    .grid-header, .data-row { min-width: 1260px; display: grid; grid-template-columns: 92px minmax(230px, 1fr) 108px 108px 20px 92px minmax(230px, 1fr) 108px 108px; align-items: center; }
-    .workspace.compare-mode .grid-header, .workspace.compare-mode .data-row { min-width: 1320px; grid-template-columns: 88px 88px 100px minmax(180px, 1fr) 96px 96px 20px 88px 88px 100px minmax(180px, 1fr) 96px 96px; }
+    .grid-header, .data-row { min-width: 1620px; display: grid; grid-template-columns: 92px minmax(230px, 1fr) 108px 108px 180px 20px 92px minmax(230px, 1fr) 108px 108px 180px; align-items: center; }
+    .workspace.compare-mode .grid-header, .workspace.compare-mode .data-row { min-width: 1680px; grid-template-columns: 88px 88px 100px minmax(180px, 1fr) 96px 96px 180px 20px 88px 88px 100px minmax(180px, 1fr) 96px 96px 180px; }
     .grid-header { height: 42px; color: #66778e; background: #f8fafd; border-bottom: 1px solid #e5ebf3; font-size: 12px; font-weight: 700; letter-spacing: .2px; }
     .grid-header > div, .data-row > div { padding: 0 10px; }
     .data-row { height: 42px; border-bottom: 1px solid #eef2f7; color: #34435d; font-size: 13px; background: #fff; }
@@ -78,6 +78,20 @@
     .amazon-link { overflow: hidden; color: #006d77; font-weight: 650; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
     .amazon-link:hover { color: #004f57; text-decoration: underline; }
     .percent { color: #334862; font-variant-numeric: tabular-nums; }
+    .trend-cell { height: 38px; min-width: 0; display: flex; align-items: center; }
+    .trend-canvas { width: 168px; height: 34px; display: block; border-radius: 5px; cursor: crosshair; }
+    .trend-canvas:hover { background: #f3f8f7; }
+    .trend-placeholder { color: #9aa6b4; font-size: 10px; white-space: nowrap; }
+    .trend-tooltip { position: fixed; z-index: 1001; max-width: 300px; padding: 7px 9px; pointer-events: none; border: 1px solid #cddbd8; border-radius: 7px; color: #24413d; background: #fff; box-shadow: 0 6px 20px #1d35312b; font-size: 11px; line-height: 1.45; }
+    .trend-modal { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; background: #17233b7d; }
+    .trend-dialog { width: min(980px, calc(100vw - 48px)); max-height: calc(100vh - 48px); overflow: auto; padding: 18px; border-radius: 14px; background: #fff; box-shadow: 0 18px 55px #10182742; }
+    .trend-dialog-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .trend-dialog-header h2 { min-width: 0; margin: 0; overflow: hidden; color: #20324b; font-size: 16px; text-overflow: ellipsis; white-space: nowrap; }
+    .trend-dialog-header button { margin-left: auto; width: 32px; height: 32px; border: 1px solid #d9e1e9; border-radius: 7px; color: #607085; background: #f8fafc; cursor: pointer; }
+    .trend-large-wrap { overflow-x: auto; border: 1px solid #e1e9ef; border-radius: 10px; background: #fbfcfe; }
+    .trend-large { width: 920px; height: 330px; display: block; }
+    .trend-legend { display: flex; gap: 14px; margin-top: 10px; color: #718097; font-size: 11px; }
+    .trend-legend span::before { content: ''; display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 50%; background: var(--legend); }
     .change { font-weight: 700; font-variant-numeric: tabular-nums; }
     .change.positive { color: #18835b; }
     .change.negative { color: #c24b52; }
@@ -106,7 +120,7 @@
     <header class="topbar">
       <div class="logo">ABA</div>
       <h1>热门搜索词分析器</h1>
-      <span class="local-badge">本地持久化 · 1.4.0</span>
+      <span class="local-badge">本地持久化 · 1.5.0</span>
     </header>
     <input id="fileInput" class="file-input" type="file" accept=".csv,text/csv" />
     <input id="compareInput" class="file-input" type="file" accept=".csv,text/csv" multiple />
@@ -144,9 +158,9 @@
       <div class="summary"><span id="fileSummary"></span><span id="resultSummary"></span></div>
       <div class="grid" role="table" aria-label="ABA 热门搜索词">
         <div class="grid-header" role="row">
-          <div class="sortable" data-sort="newRank" title="点击切换升序、降序或取消排序">排名 <span class="new-week-label"></span><span class="sort-indicator"></span></div><div class="compare-column sortable" data-sort="oldRank" title="点击切换升序、降序或取消排序">排名 <span class="old-week-label"></span><span class="sort-indicator"></span></div><div class="compare-column sortable" data-sort="change" title="旧排名减新排名；点击切换排序">涨跌幅度<span class="sort-indicator"></span></div><div>搜索词</div><div>TOP3点击</div><div>TOP3转化</div>
+          <div class="sortable" data-sort="newRank" title="点击切换升序、降序或取消排序">排名 <span class="new-week-label"></span><span class="sort-indicator"></span></div><div class="compare-column sortable" data-sort="oldRank" title="点击切换升序、降序或取消排序">排名 <span class="old-week-label"></span><span class="sort-indicator"></span></div><div class="compare-column sortable" data-sort="change" title="旧排名减新排名；点击切换排序">涨跌幅度<span class="sort-indicator"></span></div><div>搜索词</div><div>TOP3点击</div><div>TOP3转化</div><div title="同站点所选周范围内的 ABA 搜索频率排名趋势">排名趋势</div>
           <div class="column-divider" aria-hidden="true"></div>
-          <div class="sortable" data-sort="newRank" title="点击切换升序、降序或取消排序">排名 <span class="new-week-label"></span><span class="sort-indicator"></span></div><div class="compare-column sortable" data-sort="oldRank" title="点击切换升序、降序或取消排序">排名 <span class="old-week-label"></span><span class="sort-indicator"></span></div><div class="compare-column sortable" data-sort="change" title="旧排名减新排名；点击切换排序">涨跌幅度<span class="sort-indicator"></span></div><div>搜索词</div><div>TOP3点击</div><div>TOP3转化</div>
+          <div class="sortable" data-sort="newRank" title="点击切换升序、降序或取消排序">排名 <span class="new-week-label"></span><span class="sort-indicator"></span></div><div class="compare-column sortable" data-sort="oldRank" title="点击切换升序、降序或取消排序">排名 <span class="old-week-label"></span><span class="sort-indicator"></span></div><div class="compare-column sortable" data-sort="change" title="旧排名减新排名；点击切换排序">涨跌幅度<span class="sort-indicator"></span></div><div>搜索词</div><div>TOP3点击</div><div>TOP3转化</div><div title="同站点所选周范围内的 ABA 搜索频率排名趋势">排名趋势</div>
         </div>
         <div id="dataRows"></div>
         <div id="empty" class="empty hidden">没有符合筛选条件的数据</div>
@@ -157,6 +171,14 @@
       </nav>
     </section>
   </main>
+  <div id="trendTooltip" class="trend-tooltip hidden" role="tooltip"></div>
+  <div id="trendModal" class="trend-modal hidden" role="dialog" aria-modal="true" aria-labelledby="trendModalTitle">
+    <div class="trend-dialog">
+      <div class="trend-dialog-header"><h2 id="trendModalTitle"></h2><button id="closeTrendModal" type="button" aria-label="关闭">×</button></div>
+      <div class="trend-large-wrap"><canvas id="trendLarge" class="trend-large"></canvas></div>
+      <div class="trend-legend"><span style="--legend:#16865d">排名提升</span><span style="--legend:#c24b52">排名下降</span><span style="--legend:#3178f6">当前查看周</span><span style="--legend:#b5c0cb">缺失周断开</span></div>
+    </div>
+  </div>
   <script>
     const ROWS_PER_PAGE = 100, RECORDS_PER_PAGE = ROWS_PER_PAGE * 2, PAGE_WINDOW = 21;
     const TREND_ICON = 'https://www.google.com/s2/favicons?domain=trends.google.com&sz=32';
@@ -187,6 +209,10 @@
     let databasePromise = null;
     let catalog = [];
     let loadJob = null;
+    let trendJob = null;
+    let trendRangeKey = '';
+    let openTrend = null;
+    const trendCache = new Map();
 
     function openDatabase() {
       if (databasePromise) return databasePromise;
@@ -257,6 +283,15 @@
       const normalize = (value) => String(value || '').trim().toLowerCase().replace(/\\s+/g, ' ');
       const asNumber = (value) => Number(String(value || '').replaceAll('%', '').replaceAll(',', '').trim()) || 0;
       const bytesToHex = (bytes) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      const hashPair = (value) => {
+        let first = 2166136261, second = 5381;
+        for (let index = 0; index < value.length; index++) {
+          const code = value.charCodeAt(index);
+          first = Math.imul(first ^ code, 16777619);
+          second = Math.imul(second, 33) ^ code;
+        }
+        return [first >>> 0, second >>> 0];
+      };
       async function reportDirectory() {
         if (!navigator.storage?.getDirectory) return null;
         const root = await navigator.storage.getDirectory();
@@ -282,7 +317,65 @@
         await piping;
         return fileName;
       }
-      async function loadReport(fileName, token, index, total) {
+      async function saveTrendIndex(site, period, hash, records, token, forcedFileName = null, progressType = 'index-progress', reportIndex = 0, reportTotal = 1) {
+        const directory = await reportDirectory();
+        if (!directory) throw new Error('当前浏览器不支持本地趋势索引。');
+        const fileName = forcedFileName || (site + '_' + period.endDate + '_' + hash.slice(0, 24) + '.trend.bin');
+        const count = records.length;
+        const firstHashes = new Uint32Array(count);
+        const secondHashes = new Uint32Array(count);
+        const order = new Array(count);
+        for (let index = 0; index < count; index++) {
+          const pair = hashPair(records[index].searchKey);
+          firstHashes[index] = pair[0]; secondHashes[index] = pair[1]; order[index] = index;
+          if (index && index % 50000 === 0) self.postMessage({ type: progressType, token, reportIndex, reportTotal, count: index, totalRecords: count });
+        }
+        order.sort((left, right) => firstHashes[left] - firstHashes[right] || secondHashes[left] - secondHashes[right] || records[left].rank - records[right].rank);
+        const buffer = new ArrayBuffer(12 + count * 12);
+        const view = new DataView(buffer);
+        view.setUint32(0, 0x41424154, true); view.setUint32(4, 1, true); view.setUint32(8, count, true);
+        for (let position = 0; position < count; position++) {
+          const source = order[position], offset = 12 + position * 12;
+          view.setUint32(offset, firstHashes[source], true);
+          view.setUint32(offset + 4, secondHashes[source], true);
+          view.setUint32(offset + 8, records[source].rank, true);
+        }
+        const handle = await directory.getFileHandle(fileName, { create: true });
+        const destination = await handle.createWritable();
+        await destination.write(buffer);
+        await destination.close();
+        return fileName;
+      }
+      async function readTrendIndex(fileName) {
+        const directory = await reportDirectory();
+        if (!directory) throw new Error('当前浏览器不支持本地趋势索引。');
+        const handle = await directory.getFileHandle(fileName);
+        const file = await handle.getFile();
+        const buffer = await file.arrayBuffer();
+        const view = new DataView(buffer);
+        if (buffer.byteLength < 12 || view.getUint32(0, true) !== 0x41424154 || view.getUint32(4, true) !== 1) throw new Error('趋势索引损坏或版本不兼容。');
+        return buffer;
+      }
+      function lookupRank(buffer, first, second) {
+        const view = new DataView(buffer), count = view.getUint32(8, true);
+        let low = 0, high = count - 1, found = -1;
+        while (low <= high) {
+          const middle = (low + high) >>> 1, offset = 12 + middle * 12;
+          const a = view.getUint32(offset, true), b = view.getUint32(offset + 4, true);
+          if (a === first && b === second) { found = middle; high = middle - 1; }
+          else if (a < first || (a === first && b < second)) low = middle + 1;
+          else high = middle - 1;
+        }
+        if (found < 0) return null;
+        let best = Infinity;
+        for (let position = found; position < count; position++) {
+          const offset = 12 + position * 12;
+          if (view.getUint32(offset, true) !== first || view.getUint32(offset + 4, true) !== second) break;
+          best = Math.min(best, view.getUint32(offset + 8, true));
+        }
+        return Number.isFinite(best) ? best : null;
+      }
+      async function loadReport(fileName, token, index, total, progressType = 'load-progress') {
         if (typeof DecompressionStream === 'undefined') throw new Error('当前浏览器不支持读取本地压缩报告。');
         const directory = await reportDirectory();
         if (!directory) throw new Error('当前浏览器不支持本地持久化存储。');
@@ -304,7 +397,7 @@
             const term = String(item[1]);
             records.push({ rank: Number(item[0]), term, searchKey: normalize(term), top3Click: Number(item[2]), top3Conversion: Number(item[3]) });
           }
-          if (records.length && records.length % 50000 < 5000) self.postMessage({ type: 'load-progress', token, index, total, count: records.length });
+          if (records.length && records.length % 50000 < 5000) self.postMessage({ type: progressType, token, index, total, count: records.length });
         }
         if (pending.trim()) {
           const item = JSON.parse(pending);
@@ -312,6 +405,28 @@
           records.push({ rank: Number(item[0]), term, searchKey: normalize(term), top3Click: Number(item[2]), top3Conversion: Number(item[3]) });
         }
         return records;
+      }
+      async function queryTrends(reports, terms, token) {
+        const hashes = terms.map((key) => ({ key, pair: hashPair(key) }));
+        const ranks = Object.fromEntries(hashes.map((item) => [item.key, new Array(reports.length).fill(null)]));
+        const created = [];
+        for (let reportIndex = 0; reportIndex < reports.length; reportIndex++) {
+          const report = reports[reportIndex];
+          const hadTrendMetadata = Boolean(report.trendFile);
+          let trendFile = report.trendFile || String(report.storageFile).replace(/\\.jsonl\\.gz$/, '.trend.bin');
+          let indexBuffer;
+          try { indexBuffer = await readTrendIndex(trendFile); if (!hadTrendMetadata) created.push({ id: report.id, trendFile }); }
+          catch {
+            self.postMessage({ type: 'trend-migration', token, reportIndex, reportTotal: reports.length, label: report.label });
+            const records = await loadReport(report.storageFile, token, reportIndex, reports.length, 'trend-migration-progress');
+            trendFile = await saveTrendIndex(report.site, report, report.fileHash || 'legacy', records, token, trendFile, 'trend-index-progress', reportIndex, reports.length);
+            indexBuffer = await readTrendIndex(trendFile);
+            created.push({ id: report.id, trendFile });
+          }
+          for (const item of hashes) ranks[item.key][reportIndex] = lookupRank(indexBuffer, item.pair[0], item.pair[1]);
+          self.postMessage({ type: 'trend-progress', token, reportIndex, reportTotal: reports.length, label: report.label });
+        }
+        return { ranks, created };
       }
       function reportPeriod(firstRecord) {
         const source = firstRecord.join(' ').replace(/^\\uFEFF/, '');
@@ -349,11 +464,16 @@
         if (cell.length || record.length) finishRecord();
       }
       self.onmessage = async ({ data }) => {
-        const { action = 'parse', file, index, total, token, site, storageFile } = data;
+        const { action = 'parse', file, index, total, token, site, storageFile, reports, terms } = data;
         try {
           if (action === 'load') {
             const records = await loadReport(storageFile, token, index, total);
             self.postMessage({ type: 'loaded', token, index, total, records });
+            return;
+          }
+          if (action === 'trend') {
+            const result = await queryTrends(reports, terms, token);
+            self.postMessage({ type: 'trend-result', token, ranks: result.ranks, created: result.created });
             return;
           }
           const buffer = await file.arrayBuffer();
@@ -375,17 +495,137 @@
           if (!indexes) throw new Error('未找到 ABA 表头。');
           records.sort((a, b) => a.rank - b.rank || a.term.localeCompare(b.term));
           const savedFile = await saveReport(site, period, hash, records, token);
-          self.postMessage({ type: 'complete', token, index, total, period, fileHash: hash, storageFile: savedFile, rowCount: records.length });
-        } catch (error) { self.postMessage({ type: 'error', token, index, total, message: error instanceof Error ? error.message : 'CSV 解析失败。' }); }
+          const trendFile = await saveTrendIndex(site, period, hash, records, token);
+          self.postMessage({ type: 'complete', token, index, total, period, fileHash: hash, storageFile: savedFile, trendFile, rowCount: records.length });
+        } catch (error) { self.postMessage({ type: action === 'trend' ? 'trend-error' : 'error', token, index, total, message: error instanceof Error ? error.message : 'CSV 解析失败。' }); }
       };
     `;
-    const parser = new Worker(URL.createObjectURL(new Blob([workerCode], { type: 'text/javascript' })));
+    const workerUrl = URL.createObjectURL(new Blob([workerCode], { type: 'text/javascript' }));
+    const parser = new Worker(workerUrl);
+    let trendParser = new Worker(workerUrl);
 
     function recordCells(row) {
-      if (!row) return '<div></div><div class="compare-column"></div><div class="compare-column"></div><div></div><div></div><div></div>';
+      if (!row) return '<div></div><div class="compare-column"></div><div class="compare-column"></div><div></div><div></div><div></div><div></div>';
       const changeClass = row.change > 0 ? 'positive' : row.change < 0 ? 'negative' : 'zero';
-      return `<div class="rank">${row.newRank.toLocaleString()}</div><div class="compare-column rank">${row.oldRank.toLocaleString()}</div><div class="compare-column change ${changeClass}">${row.change.toLocaleString()}</div><div class="term-cell"><a class="trends-link" href="${trendsUrl(row.term)}" target="_blank" rel="noopener noreferrer" title="在 Google Trends 查看：${escapeHtml(row.term)}"><img src="${TREND_ICON}" alt="Google Trends" loading="lazy"></a><a class="amazon-link" href="${amazonUrl(row.term)}" target="_blank" rel="noopener noreferrer" title="在 Amazon ${$('#marketplace').value} 搜索">${escapeHtml(row.term)}</a></div><div class="percent">${formatPercent(row.top3Click)}</div><div class="percent">${formatPercent(row.top3Conversion)}</div>`;
+      return `<div class="rank">${row.newRank.toLocaleString()}</div><div class="compare-column rank">${row.oldRank.toLocaleString()}</div><div class="compare-column change ${changeClass}">${row.change.toLocaleString()}</div><div class="term-cell"><a class="trends-link" href="${trendsUrl(row.term)}" target="_blank" rel="noopener noreferrer" title="在 Google Trends 查看：${escapeHtml(row.term)}"><img src="${TREND_ICON}" alt="Google Trends" loading="lazy"></a><a class="amazon-link" href="${amazonUrl(row.term)}" target="_blank" rel="noopener noreferrer" title="在 Amazon ${$('#marketplace').value} 搜索">${escapeHtml(row.term)}</a></div><div class="percent">${formatPercent(row.top3Click)}</div><div class="percent">${formatPercent(row.top3Conversion)}</div><div class="trend-cell" data-trend-key="${escapeHtml(row.searchKey)}" data-trend-term="${escapeHtml(row.term)}"><span class="trend-placeholder">读取趋势…</span></div>`;
     }
+
+    function selectedTrendReports() {
+      const site = $('#marketplace').value, start = $('#rangeStart').value, end = $('#rangeEnd').value;
+      return catalog.filter((report) => report.site === site && report.endDate >= start && report.endDate <= end).sort(oldestFirst);
+    }
+
+    function trendKey(rangeKey, searchKey) { return `${rangeKey}\u0001${searchKey}`; }
+
+    function rankScale(ranks) {
+      const values = ranks.filter((rank) => Number.isFinite(rank) && rank > 0).map((rank) => Math.log10(rank));
+      if (!values.length) return { min: 0, max: 1 };
+      let min = Math.min(...values), max = Math.max(...values);
+      if (max - min < 0.12) { min -= 0.06; max += 0.06; }
+      return { min, max };
+    }
+
+    function drawTrend(canvas, data, large = false) {
+      const width = large ? 920 : 168, height = large ? 330 : 34, ratio = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
+      canvas.style.width = `${width}px`; canvas.style.height = `${height}px`;
+      const context = canvas.getContext('2d'); context.setTransform(ratio, 0, 0, ratio, 0, 0); context.clearRect(0, 0, width, height);
+      const ranks = data.ranks, weeks = data.weeks, present = ranks.filter((rank) => Number.isFinite(rank) && rank > 0);
+      const padding = large ? { left: 66, right: 20, top: 22, bottom: 48 } : { left: 4, right: 4, top: 4, bottom: 4 };
+      const plotWidth = width - padding.left - padding.right, plotHeight = height - padding.top - padding.bottom;
+      const xAt = (index) => padding.left + (weeks.length <= 1 ? plotWidth / 2 : (index / (weeks.length - 1)) * plotWidth);
+      const scale = rankScale(ranks);
+      const yAt = (rank) => padding.top + ((Math.log10(rank) - scale.min) / (scale.max - scale.min)) * plotHeight;
+      if (large) {
+        context.strokeStyle = '#e7edf3'; context.fillStyle = '#718097'; context.font = '11px Segoe UI, Microsoft YaHei, sans-serif'; context.lineWidth = 1;
+        for (let line = 0; line <= 4; line++) {
+          const y = padding.top + (line / 4) * plotHeight, logarithm = scale.min + (line / 4) * (scale.max - scale.min), label = Math.max(1, Math.round(10 ** logarithm));
+          context.beginPath(); context.moveTo(padding.left, y); context.lineTo(width - padding.right, y); context.stroke();
+          context.fillText(label.toLocaleString(), 6, y + 4);
+        }
+        const step = Math.max(1, Math.ceil(weeks.length / 10));
+        weeks.forEach((week, index) => {
+          if (index % step && index !== weeks.length - 1) return;
+          const x = xAt(index); context.save(); context.translate(x - 2, height - 8); context.rotate(-0.55); context.fillText(`${week.weekNumber}周`, 0, 0); context.restore();
+        });
+      }
+      if (!present.length) {
+        context.fillStyle = '#98a5b3'; context.font = large ? '13px Segoe UI, Microsoft YaHei, sans-serif' : '10px Segoe UI, Microsoft YaHei, sans-serif';
+        context.fillText('所选周范围内无排名', large ? 380 : 35, large ? 165 : 20);
+        canvas._trendData = data; return;
+      }
+      for (let index = 1; index < ranks.length; index++) {
+        const previous = ranks[index - 1], current = ranks[index];
+        if (!Number.isFinite(previous) || !Number.isFinite(current) || previous <= 0 || current <= 0) continue;
+        context.beginPath(); context.moveTo(xAt(index - 1), yAt(previous)); context.lineTo(xAt(index), yAt(current));
+        context.strokeStyle = current < previous ? '#16865d' : current > previous ? '#c24b52' : '#8794a5'; context.lineWidth = large ? 2.4 : 1.6; context.stroke();
+      }
+      ranks.forEach((rank, index) => {
+        if (!Number.isFinite(rank) || rank <= 0) return;
+        const current = weeks[index].id === $('#currentReport').value;
+        context.beginPath(); context.arc(xAt(index), yAt(rank), current ? (large ? 5 : 3.3) : (large ? 3.2 : 1.9), 0, Math.PI * 2);
+        context.fillStyle = current ? '#3178f6' : '#667b90'; context.fill();
+        if (current) { context.strokeStyle = '#fff'; context.lineWidth = 1.2; context.stroke(); }
+      });
+      canvas._trendData = data;
+    }
+
+    function paintVisibleTrends() {
+      $$('.trend-cell').forEach((cell) => {
+        const cached = trendCache.get(trendKey(trendRangeKey, cell.dataset.trendKey));
+        if (!cached) return;
+        cell.innerHTML = '<canvas class="trend-canvas" aria-label="ABA 排名趋势，点击放大"></canvas>';
+        const canvas = cell.querySelector('canvas');
+        drawTrend(canvas, { ...cached, term: cell.dataset.trendTerm });
+      });
+    }
+
+    function restartTrendWorker() {
+      trendParser.terminate();
+      trendParser = new Worker(workerUrl);
+      trendParser.onmessage = handleTrendMessage;
+    }
+
+    function requestVisibleTrends() {
+      const cells = Array.from($$('.trend-cell'));
+      if (!cells.length || !state.records.length) return;
+      const reports = selectedTrendReports();
+      if (!reports.length) return;
+      const rangeKey = `${$('#marketplace').value}|${reports.map((report) => report.id).join('|')}`;
+      trendRangeKey = rangeKey;
+      const terms = new Map(cells.map((cell) => [cell.dataset.trendKey, cell.dataset.trendTerm]));
+      paintVisibleTrends();
+      const missing = Array.from(terms.keys()).filter((key) => !trendCache.has(trendKey(rangeKey, key)));
+      if (!missing.length) return;
+      if (trendJob) restartTrendWorker();
+      trendJob = { token: createToken(), rangeKey, reports, terms };
+      $('#storageStatus').textContent = `正在读取 ${missing.length} 个词的排名趋势…`;
+      trendParser.postMessage({ action: 'trend', token: trendJob.token, reports, terms: missing });
+    }
+
+    function showTrendTooltip(canvas, clientX, clientY) {
+      const data = canvas?._trendData;
+      if (!data?.weeks?.length) return;
+      const rect = canvas.getBoundingClientRect();
+      const index = data.weeks.length === 1 ? 0 : Math.max(0, Math.min(data.weeks.length - 1, Math.round(((clientX - rect.left) / rect.width) * (data.weeks.length - 1))));
+      const week = data.weeks[index], rank = data.ranks[index];
+      const tooltip = $('#trendTooltip');
+      tooltip.innerHTML = `<strong>${escapeHtml(data.term)}</strong><br>${escapeHtml(week.label)}<br>${Number.isFinite(rank) && rank > 0 ? `排名 ${rank.toLocaleString()}` : '未查询到该搜索词'}`;
+      tooltip.classList.remove('hidden');
+      const left = Math.min(window.innerWidth - 310, clientX + 12), top = Math.min(window.innerHeight - 90, clientY + 12);
+      tooltip.style.left = `${Math.max(8, left)}px`; tooltip.style.top = `${Math.max(8, top)}px`;
+    }
+
+    function openTrendModal(canvas) {
+      const data = canvas?._trendData;
+      if (!data) return;
+      openTrend = data;
+      $('#trendModalTitle').textContent = `${data.term} · ABA 排名趋势`;
+      $('#trendModal').classList.remove('hidden');
+      drawTrend($('#trendLarge'), data, true);
+    }
+
+    function closeTrendModal() { openTrend = null; $('#trendModal').classList.add('hidden'); $('#trendTooltip').classList.add('hidden'); }
 
     function updateReportHeader() {
       const newWeek = state.newPeriod ? `${state.newPeriod.weekNumber}周` : '';
@@ -461,6 +701,7 @@
       $('#empty').classList.toggle('hidden', state.filtered.length > 0);
       $('#resultSummary').innerHTML = `<strong>${state.filtered.length.toLocaleString()}</strong> 条 · 第 <strong>${state.page.toLocaleString()}</strong> / ${totalPages.toLocaleString()} 页 · 每页左右各100条${state.mode === 'compare' ? ' · 涨跌=旧排名−新排名' : ''}`;
       renderPagination(totalPages);
+      requestAnimationFrame(requestVisibleTrends);
       if (scrollToTop) $('.grid').scrollIntoView({ block: 'start' });
     }
 
@@ -528,6 +769,7 @@
       if (entries.some((entry) => !entry.site)) { importError('导入已取消：有文件未指定有效站点。'); return; }
       if (mode === 'compare' && entries[0].site !== entries[1].site) { importError(`两份报告站点不同（${entries[0].site} / ${entries[1].site}），请重新选择相同站点的文件。`); return; }
       loadJob = null;
+      if (trendJob) { trendJob = null; restartTrendWorker(); }
       requestPersistentStorage().then(updateStorageStatus);
       $('#uploadPanel').classList.remove('hidden');
       $('#workspace').classList.add('hidden');
@@ -559,24 +801,31 @@
         fileHash: data.fileHash,
         fileName: entry.file.name,
         storageFile: data.storageFile,
+        trendFile: data.trendFile,
+        trendVersion: 1,
         rowCount: data.rowCount,
         sourceSize: entry.file.size,
         importedAt: new Date().toISOString()
       };
       const duplicate = catalog.find((report) => report.id === meta.id);
       if (duplicate) {
-        job.imported.push(duplicate);
+        const updated = { ...duplicate, trendFile: meta.trendFile, trendVersion: 1 };
+        await putStoredReport(updated);
+        catalog = catalog.map((report) => report.id === updated.id ? updated : report);
+        job.imported.push(updated);
         job.skipped++;
       } else {
         const sameWeek = catalog.filter((report) => report.site === meta.site && report.endDate === meta.endDate);
         if (sameWeek.length && !window.confirm(`${meta.site} 站 ${meta.label} 已有不同版本。\n\n点击“确定”替换旧版本，点击“取消”保留旧版本。`)) {
           await deleteStoredReportFile(meta.storageFile);
+          await deleteStoredReportFile(meta.trendFile);
           job.skipped++;
         } else {
           await putStoredReport(meta);
           for (const oldReport of sameWeek) {
             await deleteStoredReportMeta(oldReport.id);
             await deleteStoredReportFile(oldReport.storageFile);
+            await deleteStoredReportFile(oldReport.trendFile);
           }
           catalog = catalog.filter((report) => !sameWeek.some((oldReport) => oldReport.id === report.id));
           catalog.push(meta);
@@ -658,6 +907,7 @@
       const primary = catalog.find((report) => report.id === $('#currentReport').value);
       const comparison = catalog.find((report) => report.id === $('#compareReport').value);
       if (!primary) return;
+      if (trendJob) { trendJob = null; restartTrendWorker(); }
       loadJob = { token: createToken(), reports: comparison ? [primary, comparison] : [primary], results: [], current: 0 };
       state.records = []; state.filtered = []; state.page = 1; state.pageBeforeFilter = 1; state.filtering = false;
       $('#workspace').classList.remove('hidden');
@@ -706,15 +956,57 @@
     async function deleteCurrentReport() {
       const report = catalog.find((item) => item.id === $('#currentReport').value);
       if (!report || !window.confirm(`确定删除当前浏览器中的报告？\n\n${report.site} · ${report.label}\n${report.fileName}`)) return;
+      if (trendJob) { trendJob = null; restartTrendWorker(); }
       await deleteStoredReportMeta(report.id);
       await deleteStoredReportFile(report.storageFile);
+      await deleteStoredReportFile(report.trendFile);
       await refreshCatalog({ site: report.site });
+    }
+
+    async function handleTrendMessage({ data }) {
+      if (!trendJob || data.token !== trendJob.token) return;
+      const job = trendJob;
+      if (data.type === 'trend-migration') {
+        $('#storageStatus').textContent = `首次建立趋势索引 ${data.reportIndex + 1}/${data.reportTotal}：${data.label}`;
+        return;
+      }
+      if (data.type === 'trend-migration-progress' || data.type === 'trend-index-progress') {
+        $('#storageStatus').textContent = `建立趋势索引 ${data.reportIndex + 1}/${data.reportTotal} · ${data.count.toLocaleString()} / ${data.totalRecords.toLocaleString()} 条`;
+        return;
+      }
+      if (data.type === 'trend-progress') {
+        $('#storageStatus').textContent = `排名趋势 ${data.reportIndex + 1}/${data.reportTotal}：${data.label}`;
+        return;
+      }
+      if (data.type === 'trend-error') {
+        trendJob = null;
+        $$('.trend-cell').forEach((cell) => { if (!trendCache.has(trendKey(job.rangeKey, cell.dataset.trendKey))) cell.innerHTML = `<span class="trend-placeholder" title="${escapeHtml(data.message)}">趋势读取失败</span>`; });
+        updateStorageStatus();
+        return;
+      }
+      if (data.type !== 'trend-result') return;
+      for (const created of data.created || []) {
+        const report = catalog.find((item) => item.id === created.id);
+        if (!report) continue;
+        const updated = { ...report, trendFile: created.trendFile, trendVersion: 1 };
+        await putStoredReport(updated);
+        catalog = catalog.map((item) => item.id === updated.id ? updated : item);
+      }
+      const weeks = job.reports.map((report) => ({ id: report.id, weekNumber: report.weekNumber, startDate: report.startDate, endDate: report.endDate, label: report.label }));
+      for (const [key, ranks] of Object.entries(data.ranks || {})) {
+        trendCache.set(trendKey(job.rangeKey, key), { weeks, ranks, term: job.terms.get(key) || key });
+        if (trendCache.size > 4000) trendCache.delete(trendCache.keys().next().value);
+      }
+      trendJob = null;
+      paintVisibleTrends();
+      updateStorageStatus();
     }
 
     parser.onmessage = async ({ data }) => {
       if (importJob && data.token === importJob.token) {
         if (data.type === 'progress') { setImportStatus(`正在解析第 ${data.index + 1}/${data.total} 份：${importJob.files[data.index].file.name} · ${data.count.toLocaleString()} 条`); $('#parseProgress').value = data.percent; return; }
         if (data.type === 'storage-progress') { setImportStatus(`正在压缩保存第 ${importJob.current + 1}/${importJob.files.length} 份 · ${data.count.toLocaleString()} / ${data.totalRecords.toLocaleString()} 条`); $('#parseProgress').value = Math.round((data.count / data.totalRecords) * 100); return; }
+        if (data.type === 'index-progress') { setImportStatus(`正在建立第 ${importJob.current + 1}/${importJob.files.length} 份趋势索引 · ${data.count.toLocaleString()} / ${data.totalRecords.toLocaleString()} 条`); $('#parseProgress').value = Math.round((data.count / data.totalRecords) * 100); return; }
         if (data.type === 'error') { importError(`第 ${data.index + 1} 份文件处理失败：${data.message}`); return; }
         if (data.type === 'complete') { try { await acceptImportedReport(data); } catch (error) { importError(`保存报告失败：${error.message || error}`); } }
         return;
@@ -730,6 +1022,7 @@
         }
       }
     };
+    trendParser.onmessage = handleTrendMessage;
 
     $('#fileInput').addEventListener('change', (event) => { startImport(event.target.files, 'single'); event.target.value = ''; });
     $('#compareInput').addEventListener('change', (event) => { startImport(event.target.files, 'compare'); event.target.value = ''; });
@@ -749,6 +1042,14 @@
     });
     $('#pageGo').addEventListener('click', () => goToPage(Number($('#pageInput').value)));
     $('#pageInput').addEventListener('keydown', (event) => { if (event.key === 'Enter') goToPage(Number(event.currentTarget.value)); });
+    $('#dataRows').addEventListener('mousemove', (event) => { const canvas = event.target.closest('canvas.trend-canvas'); if (canvas) showTrendTooltip(canvas, event.clientX, event.clientY); else $('#trendTooltip').classList.add('hidden'); });
+    $('#dataRows').addEventListener('mouseleave', () => $('#trendTooltip').classList.add('hidden'));
+    $('#dataRows').addEventListener('click', (event) => { const canvas = event.target.closest('canvas.trend-canvas'); if (canvas) openTrendModal(canvas); });
+    $('#trendLarge').addEventListener('mousemove', (event) => showTrendTooltip(event.currentTarget, event.clientX, event.clientY));
+    $('#trendLarge').addEventListener('mouseleave', () => $('#trendTooltip').classList.add('hidden'));
+    $('#closeTrendModal').addEventListener('click', closeTrendModal);
+    $('#trendModal').addEventListener('click', (event) => { if (event.target === event.currentTarget) closeTrendModal(); });
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !$('#trendModal').classList.contains('hidden')) closeTrendModal(); });
     const uploadPanel = $('#uploadPanel');
     ['dragenter', 'dragover'].forEach((name) => uploadPanel.addEventListener(name, (event) => { event.preventDefault(); uploadPanel.classList.add('dragging'); }));
     ['dragleave', 'drop'].forEach((name) => uploadPanel.addEventListener(name, (event) => { event.preventDefault(); uploadPanel.classList.remove('dragging'); }));
