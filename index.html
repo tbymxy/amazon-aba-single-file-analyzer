@@ -48,7 +48,6 @@
     .toolbar input, .toolbar select { height: 34px; padding: 7px 8px; border: 1px solid #dce4ef; border-radius: 7px; color: #263852; background: #fff; font-size: 12px; outline-color: #3178f6; }
     #keyword { width: 255px; }
     .numeric { width: 112px; }
-    .toolbar-actions { margin-left: auto; display: flex; align-items: center; gap: 7px; }
     .replace-file { min-height: 34px; color: #315377; background: #edf3fb; box-shadow: none; }
     .replace-file:hover { color: #1f66cd; background: #e3edfb; }
     .reset-button { height: 34px; padding: 0 13px; border: 1px solid #d8e1eb; border-radius: 7px; color: #566a7b; background: #f7f9fc; font-size: 12px; font-weight: 700; cursor: pointer; }
@@ -92,6 +91,15 @@
     .trend-large { width: 920px; height: 330px; display: block; }
     .trend-legend { display: flex; gap: 14px; margin-top: 10px; color: #718097; font-size: 11px; }
     .trend-legend span::before { content: ''; display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 50%; background: var(--legend); }
+    .storage-description { margin: 0 0 12px; color: #64758a; font-size: 12px; line-height: 1.65; }
+    .storage-location { padding: 9px 11px; border-radius: 8px; color: #315c56; background: #eef6f4; font: 11px ui-monospace, "Cascadia Mono", monospace; }
+    .storage-table-wrap { max-height: 420px; margin-top: 12px; overflow: auto; border: 1px solid #e1e8f0; border-radius: 9px; }
+    .storage-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .storage-table th { position: sticky; top: 0; padding: 9px; color: #607187; background: #f6f9fb; text-align: left; }
+    .storage-table td { padding: 8px 9px; border-top: 1px solid #edf1f5; color: #33475e; }
+    .storage-table .file-name { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .storage-footer { display: flex; align-items: center; gap: 9px; margin-top: 12px; }
+    .storage-footer .status { flex: 1; margin: 0; }
     .change { font-weight: 700; font-variant-numeric: tabular-nums; }
     .change.positive { color: #18835b; }
     .change.negative { color: #c24b52; }
@@ -120,16 +128,14 @@
     <header class="topbar">
       <div class="logo">ABA</div>
       <h1>热门搜索词分析器</h1>
-      <span class="local-badge">本地持久化 · 1.5.0</span>
+      <span class="local-badge">本地持久化 · 1.6.0</span>
     </header>
-    <input id="fileInput" class="file-input" type="file" accept=".csv,text/csv" />
-    <input id="compareInput" class="file-input" type="file" accept=".csv,text/csv" multiple />
-    <input id="batchInput" class="file-input" type="file" accept=".csv,text/csv" multiple />
+    <input id="importInput" class="file-input" type="file" accept=".csv,text/csv" multiple />
     <section id="uploadPanel" class="upload-panel">
       <div>
         <h2>导入 ABA 热门搜索词 CSV</h2>
-        <p>可批量导入多站点、多周次报告；数据仅保存在当前浏览器</p>
-        <div class="import-actions"><label class="file-button" for="fileInput">导入一份</label><label class="file-button compare-button" for="compareInput">导入两份对比</label><label class="file-button compare-button" for="batchInput">批量导入</label></div>
+        <p>可一次选择一份或多份、多站点、多周次报告</p>
+        <div class="import-actions"><label class="file-button" for="importInput">导入</label></div>
         <div id="parseStatus" class="status"></div>
         <progress id="parseProgress" class="hidden" max="100" value="0"></progress>
       </div>
@@ -142,7 +148,7 @@
         <label>查看周<select id="currentReport"></select></label>
         <label>对比周<select id="compareReport"><option value="">不对比</option></select></label>
         <span id="storageStatus" class="storage-status">正在读取本地报告…</span>
-        <div class="report-actions"><label class="file-button replace-file compare-button" for="batchInput">继续导入</label><button id="deleteReport" class="delete-button" type="button">删除当前</button></div>
+        <div class="report-actions"><label class="file-button replace-file compare-button" for="importInput">导入</label><button id="openStorage" class="reset-button" type="button">本地数据</button><button id="deleteReport" class="delete-button" type="button">删除当前</button></div>
       </div>
       <div class="toolbar">
         <label>搜索词<input id="keyword" placeholder="筛选关键词" autocomplete="off" /></label>
@@ -153,7 +159,6 @@
         <label class="compare-filter">涨跌 ≥<input id="changeMin" class="numeric" type="number" step="1" placeholder="不限" /></label>
         <label class="compare-filter">涨跌 ≤<input id="changeMax" class="numeric" type="number" step="1" placeholder="不限" /></label>
         <button id="resetFilters" class="reset-button" type="button">重置</button>
-        <div class="toolbar-actions"><label class="file-button replace-file" for="fileInput">更换单份</label><label class="file-button replace-file compare-button" for="compareInput">更换对比</label></div>
       </div>
       <div class="summary"><span id="fileSummary"></span><span id="resultSummary"></span></div>
       <div class="grid" role="table" aria-label="ABA 热门搜索词">
@@ -177,6 +182,15 @@
       <div class="trend-dialog-header"><h2 id="trendModalTitle"></h2><button id="closeTrendModal" type="button" aria-label="关闭">×</button></div>
       <div class="trend-large-wrap"><canvas id="trendLarge" class="trend-large"></canvas></div>
       <div class="trend-legend"><span style="--legend:#16865d">排名提升</span><span style="--legend:#c24b52">排名下降</span><span style="--legend:#3178f6">当前查看周</span><span style="--legend:#b5c0cb">缺失周断开</span></div>
+    </div>
+  </div>
+  <div id="storageModal" class="trend-modal hidden" role="dialog" aria-modal="true" aria-labelledby="storageModalTitle">
+    <div class="trend-dialog">
+      <div class="trend-dialog-header"><h2 id="storageModalTitle">本地数据</h2><button id="closeStorageModal" type="button" aria-label="关闭">×</button></div>
+      <p class="storage-description">实际数据保存在浏览器私有存储中，网页无权直接用 Windows 资源管理器打开该内部目录。可在下方查看文件，或将完整数据复制到自己选择的普通文件夹。</p>
+      <div class="storage-location">浏览器私有存储 (OPFS) / aba-reports</div>
+      <div class="storage-table-wrap"><table class="storage-table"><thead><tr><th>站点</th><th>周次</th><th>源报告</th><th>分析数据</th><th>趋势索引</th></tr></thead><tbody id="storageFiles"></tbody></table></div>
+      <div class="storage-footer"><div id="storageModalStatus" class="status"></div><button id="exportStorage" class="file-button" type="button">导出到文件夹</button><button id="closeStorageButton" class="reset-button" type="button">关闭</button></div>
     </div>
   </div>
   <script>
@@ -277,6 +291,70 @@
         const directory = await root.getDirectoryHandle(REPORT_DIRECTORY, { create: true });
         await directory.removeEntry(fileName);
       } catch (error) { if (error?.name !== 'NotFoundError') throw error; }
+    }
+
+    async function storedFile(fileName) {
+      if (!fileName || !navigator.storage?.getDirectory) return null;
+      try {
+        const root = await navigator.storage.getDirectory();
+        const directory = await root.getDirectoryHandle(REPORT_DIRECTORY, { create: true });
+        return await (await directory.getFileHandle(fileName)).getFile();
+      } catch (error) { if (error?.name === 'NotFoundError') return null; throw error; }
+    }
+
+    async function inspectStoredData() {
+      $('#storageFiles').innerHTML = '<tr><td colspan="5">正在读取本地文件…</td></tr>';
+      $('#storageModalStatus').textContent = '';
+      $('#storageModalStatus').className = 'status';
+      const rows = await Promise.all([...catalog].sort(newestFirst).map(async (report) => {
+        const [analysis, trend] = await Promise.all([storedFile(report.storageFile), storedFile(report.trendFile)]);
+        return { report, analysis, trend };
+      }));
+      if (!rows.length) $('#storageFiles').innerHTML = '<tr><td colspan="5">尚未导入报告</td></tr>';
+      else $('#storageFiles').innerHTML = rows.map(({ report, analysis, trend }) => `<tr><td>${report.site}</td><td>${escapeHtml(report.label)}</td><td class="file-name" title="${escapeHtml(report.fileName)}">${escapeHtml(report.fileName)}</td><td class="file-name" title="${escapeHtml(report.storageFile || '')}">${analysis ? `${escapeHtml(report.storageFile)} · ${formatBytes(analysis.size)}` : '文件缺失'}</td><td class="file-name" title="${escapeHtml(report.trendFile || '')}">${trend ? `${escapeHtml(report.trendFile)} · ${formatBytes(trend.size)}` : '待建立'}</td></tr>`).join('');
+      const analysisBytes = rows.reduce((sum, row) => sum + (row.analysis?.size || 0), 0), trendBytes = rows.reduce((sum, row) => sum + (row.trend?.size || 0), 0);
+      $('#storageModalStatus').textContent = `${rows.length} 份报告 · 分析数据 ${formatBytes(analysisBytes)} · 趋势索引 ${formatBytes(trendBytes)}`;
+    }
+
+    async function openStorageModal() {
+      closeTrendModal();
+      $('#storageModal').classList.remove('hidden');
+      try { await inspectStoredData(); }
+      catch (error) { $('#storageModalStatus').textContent = `读取失败：${error.message || error}`; $('#storageModalStatus').className = 'status error'; }
+    }
+
+    function closeStorageModal() { $('#storageModal').classList.add('hidden'); }
+
+    async function exportStoredData() {
+      if (!window.showDirectoryPicker) { window.alert('当前浏览器不支持直接导出文件夹，请使用最新版 Chrome 或 Edge。'); return; }
+      if (!catalog.length) { window.alert('尚未导入报告。'); return; }
+      try {
+        const selected = await window.showDirectoryPicker({ id: 'amazon-aba-local-data', mode: 'readwrite' });
+        const destination = await selected.getDirectoryHandle('Amazon-ABA-本地数据', { create: true });
+        const root = await navigator.storage.getDirectory();
+        const source = await root.getDirectoryHandle(REPORT_DIRECTORY, { create: true });
+        const names = Array.from(new Set(catalog.flatMap((report) => [report.storageFile, report.trendFile]).filter(Boolean)));
+        let copied = 0;
+        for (const name of names) {
+          $('#storageModalStatus').textContent = `正在导出 ${copied + 1}/${names.length}：${name}`;
+          try {
+            const input = await (await source.getFileHandle(name)).getFile();
+            const output = await (await destination.getFileHandle(name, { create: true })).createWritable();
+            await input.stream().pipeTo(output);
+            copied++;
+          } catch (error) { if (error?.name !== 'NotFoundError') throw error; }
+        }
+        const manifest = await (await destination.getFileHandle('reports.json', { create: true })).createWritable();
+        await manifest.write(new TextEncoder().encode(JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), reports: catalog }, null, 2))); await manifest.close();
+        const readme = await (await destination.getFileHandle('说明.txt', { create: true })).createWritable();
+        await readme.write(new TextEncoder().encode('Amazon ABA 本地持久化数据备份\r\n\r\n*.jsonl.gz 为压缩分析数据，*.trend.bin 为排名趋势索引，reports.json 为报告目录。\r\n请保留原始 CSV；此备份主要用于查看和防止浏览器数据丢失。\r\n')); await readme.close();
+        $('#storageModalStatus').className = 'status';
+        $('#storageModalStatus').textContent = `已导出 ${copied} 个数据文件到“${selected.name}\\Amazon-ABA-本地数据”，可在 Windows 资源管理器中查看。`;
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+        $('#storageModalStatus').className = 'status error';
+        $('#storageModalStatus').textContent = `导出失败：${error.message || error}`;
+      }
     }
 
     const workerCode = `
@@ -757,17 +835,14 @@
       return answer ? ALIASES[answer.trim().toUpperCase()] || null : null;
     }
 
-    function startImport(files, mode) {
+    function startImport(files) {
       const selected = Array.from(files || []);
-      if ((mode === 'single' && selected.length !== 1) || (mode === 'compare' && selected.length !== 2) || (mode === 'batch' && selected.length < 1)) {
-        importError(mode === 'compare' ? '请选择两份 CSV 报告文件。' : '请选择至少一份 CSV 报告文件。');
-        return;
-      }
+      if (!selected.length) { importError('请选择至少一份 CSV 报告文件。'); return; }
       if (selected.some((file) => !file.name.toLowerCase().endsWith('.csv'))) { importError('请只选择 CSV 文件。'); return; }
       const fallback = catalog.length ? ($('#marketplace').value || 'GB') : 'GB';
       const entries = selected.map((file) => ({ file, site: siteForFile(file, fallback) }));
       if (entries.some((entry) => !entry.site)) { importError('导入已取消：有文件未指定有效站点。'); return; }
-      if (mode === 'compare' && entries[0].site !== entries[1].site) { importError(`两份报告站点不同（${entries[0].site} / ${entries[1].site}），请重新选择相同站点的文件。`); return; }
+      const mode = entries.length === 1 ? 'single' : entries.length === 2 && entries[0].site === entries[1].site ? 'compare' : 'batch';
       loadJob = null;
       if (trendJob) { trendJob = null; restartTrendWorker(); }
       requestPersistentStorage().then(updateStorageStatus);
@@ -1024,9 +1099,7 @@
     };
     trendParser.onmessage = handleTrendMessage;
 
-    $('#fileInput').addEventListener('change', (event) => { startImport(event.target.files, 'single'); event.target.value = ''; });
-    $('#compareInput').addEventListener('change', (event) => { startImport(event.target.files, 'compare'); event.target.value = ''; });
-    $('#batchInput').addEventListener('change', (event) => { startImport(event.target.files, 'batch'); event.target.value = ''; });
+    $('#importInput').addEventListener('change', (event) => { startImport(event.target.files); event.target.value = ''; });
     FILTER_IDS.forEach((id) => $('#' + id).addEventListener('input', scheduleFilter));
     $('#resetFilters').addEventListener('click', () => { window.clearTimeout(state.filterTimer); FILTER_IDS.forEach((id) => { $('#' + id).value = ''; }); applyFilters(); });
     $('#marketplace').addEventListener('change', () => { rebuildSiteView({ site: $('#marketplace').value }); loadSelectedReports(); });
@@ -1035,6 +1108,11 @@
     $('#currentReport').addEventListener('change', () => { rebuildReportSelectors($('#currentReport').value); loadSelectedReports(); });
     $('#compareReport').addEventListener('change', loadSelectedReports);
     $('#deleteReport').addEventListener('click', () => deleteCurrentReport().catch((error) => window.alert(`删除失败：${error.message || error}`)));
+    $('#openStorage').addEventListener('click', openStorageModal);
+    $('#exportStorage').addEventListener('click', exportStoredData);
+    $('#closeStorageModal').addEventListener('click', closeStorageModal);
+    $('#closeStorageButton').addEventListener('click', closeStorageModal);
+    $('#storageModal').addEventListener('click', (event) => { if (event.target === event.currentTarget) closeStorageModal(); });
     $('.grid-header').addEventListener('click', (event) => { const header = event.target.closest('[data-sort]'); if (header) toggleSort(header.dataset.sort); });
     $('#pagination').addEventListener('click', (event) => {
       const button = event.target.closest('button[data-page]');
@@ -1049,11 +1127,11 @@
     $('#trendLarge').addEventListener('mouseleave', () => $('#trendTooltip').classList.add('hidden'));
     $('#closeTrendModal').addEventListener('click', closeTrendModal);
     $('#trendModal').addEventListener('click', (event) => { if (event.target === event.currentTarget) closeTrendModal(); });
-    document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !$('#trendModal').classList.contains('hidden')) closeTrendModal(); });
+    document.addEventListener('keydown', (event) => { if (event.key !== 'Escape') return; if (!$('#trendModal').classList.contains('hidden')) closeTrendModal(); if (!$('#storageModal').classList.contains('hidden')) closeStorageModal(); });
     const uploadPanel = $('#uploadPanel');
     ['dragenter', 'dragover'].forEach((name) => uploadPanel.addEventListener(name, (event) => { event.preventDefault(); uploadPanel.classList.add('dragging'); }));
     ['dragleave', 'drop'].forEach((name) => uploadPanel.addEventListener(name, (event) => { event.preventDefault(); uploadPanel.classList.remove('dragging'); }));
-    uploadPanel.addEventListener('drop', (event) => { const files = event.dataTransfer.files; startImport(files, files.length === 1 ? 'single' : 'batch'); });
+    uploadPanel.addEventListener('drop', (event) => startImport(event.dataTransfer.files));
 
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('./sw.js').catch(() => {});
     refreshCatalog().catch((error) => importError(`无法读取本地报告库：${error.message || error}`));
