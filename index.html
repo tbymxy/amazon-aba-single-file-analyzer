@@ -93,13 +93,19 @@
     .trend-legend span::before { content: ''; display: inline-block; width: 9px; height: 9px; margin-right: 5px; border-radius: 50%; background: var(--legend); }
     .storage-description { margin: 0 0 12px; color: #64758a; font-size: 12px; line-height: 1.65; }
     .storage-location { padding: 9px 11px; border-radius: 8px; color: #315c56; background: #eef6f4; font: 11px ui-monospace, "Cascadia Mono", monospace; }
-    .storage-table-wrap { max-height: 420px; margin-top: 12px; overflow: auto; border: 1px solid #e1e8f0; border-radius: 9px; }
+    .storage-toolbar { display: flex; align-items: center; gap: 9px; margin-top: 12px; }
+    .storage-toolbar label { display: flex; align-items: center; gap: 7px; color: #64758a; font-size: 11px; font-weight: 700; }
+    .storage-toolbar select { min-width: 150px; height: 32px; padding: 5px 8px; border: 1px solid #d7e1e9; border-radius: 7px; color: #33475e; background: #fff; outline-color: #527d75; }
+    .storage-table-wrap { max-height: 420px; margin-top: 9px; overflow: auto; border: 1px solid #e1e8f0; border-radius: 9px; }
     .storage-table { width: 100%; border-collapse: collapse; font-size: 11px; }
     .storage-table th { position: sticky; top: 0; padding: 9px; color: #607187; background: #f6f9fb; text-align: left; }
     .storage-table td { padding: 8px 9px; border-top: 1px solid #edf1f5; color: #33475e; }
+    .storage-table .select-column { width: 36px; text-align: center; }
+    .storage-table input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: #527d75; cursor: pointer; }
     .storage-table .file-name { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .storage-footer { display: flex; align-items: center; gap: 9px; margin-top: 12px; }
     .storage-footer .status { flex: 1; margin: 0; }
+    .storage-footer .delete-button:disabled { opacity: .5; cursor: default; }
     .change { font-weight: 700; font-variant-numeric: tabular-nums; }
     .change.positive { color: #18835b; }
     .change.negative { color: #c24b52; }
@@ -128,7 +134,7 @@
     <header class="topbar">
       <div class="logo">ABA</div>
       <h1>热门搜索词分析器</h1>
-      <span class="local-badge">本地持久化 · 1.6.0</span>
+      <span class="local-badge">本地持久化 · 1.7.0</span>
     </header>
     <input id="importInput" class="file-input" type="file" accept=".csv,text/csv" multiple />
     <section id="uploadPanel" class="upload-panel">
@@ -148,7 +154,7 @@
         <label>查看周<select id="currentReport"></select></label>
         <label>对比周<select id="compareReport"><option value="">不对比</option></select></label>
         <span id="storageStatus" class="storage-status">正在读取本地报告…</span>
-        <div class="report-actions"><label class="file-button replace-file compare-button" for="importInput">导入</label><button id="openStorage" class="reset-button" type="button">本地数据</button><button id="deleteReport" class="delete-button" type="button">删除当前</button></div>
+        <div class="report-actions"><label class="file-button replace-file compare-button" for="importInput">导入</label><button id="openStorage" class="reset-button" type="button">本地数据</button></div>
       </div>
       <div class="toolbar">
         <label>搜索词<input id="keyword" placeholder="筛选关键词" autocomplete="off" /></label>
@@ -187,10 +193,11 @@
   <div id="storageModal" class="trend-modal hidden" role="dialog" aria-modal="true" aria-labelledby="storageModalTitle">
     <div class="trend-dialog">
       <div class="trend-dialog-header"><h2 id="storageModalTitle">本地数据</h2><button id="closeStorageModal" type="button" aria-label="关闭">×</button></div>
-      <p class="storage-description">实际数据保存在浏览器私有存储中，网页无权直接用 Windows 资源管理器打开该内部目录。可在下方查看文件，或将完整数据复制到自己选择的普通文件夹。</p>
+      <p class="storage-description">分析数据保存在浏览器私有存储中；源报告仍在电脑原位置，未复制到浏览器。可按站点查看、批量删除，或将全部本地分析数据复制到自己选择的普通文件夹。</p>
       <div class="storage-location">浏览器私有存储 (OPFS) / aba-reports</div>
-      <div class="storage-table-wrap"><table class="storage-table"><thead><tr><th>站点</th><th>周次</th><th>源报告</th><th>分析数据</th><th>趋势索引</th></tr></thead><tbody id="storageFiles"></tbody></table></div>
-      <div class="storage-footer"><div id="storageModalStatus" class="status"></div><button id="exportStorage" class="file-button" type="button">导出到文件夹</button><button id="closeStorageButton" class="reset-button" type="button">关闭</button></div>
+      <div class="storage-toolbar"><label>站点<select id="storageSiteFilter"><option value="">全部站点</option></select></label></div>
+      <div class="storage-table-wrap"><table class="storage-table"><thead><tr><th class="select-column"><input id="storageSelectAll" type="checkbox" aria-label="全选当前站点报告"></th><th>站点</th><th>周次</th><th>源报告</th><th>分析数据</th><th>趋势索引</th></tr></thead><tbody id="storageFiles"></tbody></table></div>
+      <div class="storage-footer"><div id="storageModalStatus" class="status"></div><button id="deleteSelectedReports" class="delete-button" type="button" disabled>删除选中</button><button id="exportStorage" class="file-button" type="button">导出全部到文件夹</button><button id="closeStorageButton" class="reset-button" type="button">关闭</button></div>
     </div>
   </div>
   <script>
@@ -226,6 +233,7 @@
     let trendJob = null;
     let trendRangeKey = '';
     let openTrend = null;
+    let storageRows = [];
     const trendCache = new Map();
 
     function openDatabase() {
@@ -302,18 +310,47 @@
       } catch (error) { if (error?.name === 'NotFoundError') return null; throw error; }
     }
 
-    async function inspectStoredData() {
-      $('#storageFiles').innerHTML = '<tr><td colspan="5">正在读取本地文件…</td></tr>';
+    function updateStoredSelectionState() {
+      const checkboxes = Array.from($$('.storage-select'));
+      const selected = checkboxes.filter((checkbox) => checkbox.checked).length;
+      const selectAll = $('#storageSelectAll');
+      selectAll.checked = Boolean(checkboxes.length) && selected === checkboxes.length;
+      selectAll.indeterminate = selected > 0 && selected < checkboxes.length;
+      selectAll.disabled = !checkboxes.length;
+      const deleteButton = $('#deleteSelectedReports');
+      deleteButton.disabled = selected === 0;
+      deleteButton.textContent = selected ? `删除选中（${selected}）` : '删除选中';
+    }
+
+    function renderStoredData(message = '') {
+      const selectedSite = $('#storageSiteFilter').value;
+      const rows = storageRows.filter(({ report }) => !selectedSite || report.site === selectedSite);
+      if (!rows.length) $('#storageFiles').innerHTML = `<tr><td colspan="6">${storageRows.length ? '当前站点没有已导入报告' : '尚未导入报告'}</td></tr>`;
+      else $('#storageFiles').innerHTML = rows.map(({ report, analysis, trend }) => `<tr><td class="select-column"><input class="storage-select" type="checkbox" value="${escapeHtml(report.id)}" aria-label="选择 ${escapeHtml(report.site)} ${escapeHtml(report.label)}"></td><td>${report.site}</td><td>${escapeHtml(report.label)}</td><td class="file-name" title="${escapeHtml(report.fileName)}">${escapeHtml(report.fileName)} · ${formatBytes(Number(report.sourceSize) || 0)}（未复制）</td><td class="file-name" title="${escapeHtml(report.storageFile || '')}">${analysis ? `${escapeHtml(report.storageFile)} · ${formatBytes(analysis.size)}` : '文件缺失'}</td><td class="file-name" title="${escapeHtml(report.trendFile || '')}">${trend ? `${escapeHtml(report.trendFile)} · ${formatBytes(trend.size)}` : '待建立'}</td></tr>`).join('');
+      const sourceBytes = rows.reduce((sum, row) => sum + (Number(row.report.sourceSize) || 0), 0);
+      const analysisBytes = rows.reduce((sum, row) => sum + (row.analysis?.size || 0), 0);
+      const trendBytes = rows.reduce((sum, row) => sum + (row.trend?.size || 0), 0);
+      $('#storageModalStatus').className = 'status';
+      $('#storageModalStatus').textContent = `${rows.length} 份报告 · 源报告原始大小（参考）${formatBytes(sourceBytes)} · 本地分析数据 ${formatBytes(analysisBytes)} · 趋势索引 ${formatBytes(trendBytes)}${message ? ` · ${message}` : ''}`;
+      $('#storageSelectAll').checked = false;
+      $('#storageSelectAll').indeterminate = false;
+      updateStoredSelectionState();
+    }
+
+    async function inspectStoredData(message = '') {
+      $('#storageFiles').innerHTML = '<tr><td colspan="6">正在读取本地文件…</td></tr>';
       $('#storageModalStatus').textContent = '';
       $('#storageModalStatus').className = 'status';
-      const rows = await Promise.all([...catalog].sort(newestFirst).map(async (report) => {
+      storageRows = await Promise.all([...catalog].sort(newestFirst).map(async (report) => {
         const [analysis, trend] = await Promise.all([storedFile(report.storageFile), storedFile(report.trendFile)]);
         return { report, analysis, trend };
       }));
-      if (!rows.length) $('#storageFiles').innerHTML = '<tr><td colspan="5">尚未导入报告</td></tr>';
-      else $('#storageFiles').innerHTML = rows.map(({ report, analysis, trend }) => `<tr><td>${report.site}</td><td>${escapeHtml(report.label)}</td><td class="file-name" title="${escapeHtml(report.fileName)}">${escapeHtml(report.fileName)}</td><td class="file-name" title="${escapeHtml(report.storageFile || '')}">${analysis ? `${escapeHtml(report.storageFile)} · ${formatBytes(analysis.size)}` : '文件缺失'}</td><td class="file-name" title="${escapeHtml(report.trendFile || '')}">${trend ? `${escapeHtml(report.trendFile)} · ${formatBytes(trend.size)}` : '待建立'}</td></tr>`).join('');
-      const analysisBytes = rows.reduce((sum, row) => sum + (row.analysis?.size || 0), 0), trendBytes = rows.reduce((sum, row) => sum + (row.trend?.size || 0), 0);
-      $('#storageModalStatus').textContent = `${rows.length} 份报告 · 分析数据 ${formatBytes(analysisBytes)} · 趋势索引 ${formatBytes(trendBytes)}`;
+      const filter = $('#storageSiteFilter');
+      const previousSite = filter.value;
+      const sites = Object.keys(MARKETPLACES).filter((code) => storageRows.some(({ report }) => report.site === code));
+      filter.innerHTML = '<option value="">全部站点</option>' + sites.map((code) => `<option value="${code}">${code} · ${MARKETPLACES[code].name}</option>`).join('');
+      filter.value = sites.includes(previousSite) ? previousSite : '';
+      renderStoredData(message);
     }
 
     async function openStorageModal() {
@@ -324,6 +361,37 @@
     }
 
     function closeStorageModal() { $('#storageModal').classList.add('hidden'); }
+
+    async function deleteSelectedStoredReports() {
+      const ids = Array.from($$('.storage-select:checked'), (checkbox) => checkbox.value);
+      if (!ids.length) return;
+      const selected = storageRows.filter(({ report }) => ids.includes(report.id));
+      const names = selected.slice(0, 5).map(({ report }) => `${report.site} · ${report.label}`).join('\n');
+      const extra = selected.length > 5 ? `\n…另有 ${selected.length - 5} 份` : '';
+      if (!window.confirm(`确定删除选中的 ${selected.length} 份报告？\n\n${names}${extra}\n\n将删除浏览器中的报告目录、分析数据、趋势索引和缓存；不会删除电脑原位置的 CSV。`)) return;
+      const idSet = new Set(ids);
+      if (trendJob?.reports?.some((report) => idSet.has(report.id))) { trendJob = null; restartTrendWorker(); }
+      if (loadJob?.reports?.some((report) => idSet.has(report.id))) loadJob = null;
+      closeTrendModal();
+      trendCache.clear();
+      $('#deleteSelectedReports').disabled = true;
+      let deleted = 0;
+      const failed = [];
+      for (let index = 0; index < selected.length; index++) {
+        const report = selected[index].report;
+        $('#storageModalStatus').textContent = `正在删除 ${index + 1}/${selected.length}：${report.site} · ${report.label}`;
+        try {
+          await deleteStoredReportFile(report.storageFile);
+          await deleteStoredReportFile(report.trendFile);
+          await deleteStoredReportMeta(report.id);
+          deleted++;
+        } catch (error) { failed.push(`${report.site} ${report.label}：${error.message || error}`); }
+      }
+      const preferredSite = $('#marketplace').value;
+      await refreshCatalog({ site: preferredSite });
+      await inspectStoredData(failed.length ? `已删除 ${deleted} 份，${failed.length} 份失败` : `已删除 ${deleted} 份`);
+      if (failed.length) window.alert(`以下报告删除失败，请重试：\n\n${failed.join('\n')}`);
+    }
 
     async function exportStoredData() {
       if (!window.showDirectoryPicker) { window.alert('当前浏览器不支持直接导出文件夹，请使用最新版 Chrome 或 Edge。'); return; }
@@ -1028,16 +1096,6 @@
       requestAnimationFrame(() => applyFilters());
     }
 
-    async function deleteCurrentReport() {
-      const report = catalog.find((item) => item.id === $('#currentReport').value);
-      if (!report || !window.confirm(`确定删除当前浏览器中的报告？\n\n${report.site} · ${report.label}\n${report.fileName}`)) return;
-      if (trendJob) { trendJob = null; restartTrendWorker(); }
-      await deleteStoredReportMeta(report.id);
-      await deleteStoredReportFile(report.storageFile);
-      await deleteStoredReportFile(report.trendFile);
-      await refreshCatalog({ site: report.site });
-    }
-
     async function handleTrendMessage({ data }) {
       if (!trendJob || data.token !== trendJob.token) return;
       const job = trendJob;
@@ -1107,8 +1165,11 @@
     $('#rangeEnd').addEventListener('change', () => { if ($('#rangeEnd').value < $('#rangeStart').value) $('#rangeStart').value = $('#rangeEnd').value; rebuildReportSelectors(); loadSelectedReports(); });
     $('#currentReport').addEventListener('change', () => { rebuildReportSelectors($('#currentReport').value); loadSelectedReports(); });
     $('#compareReport').addEventListener('change', loadSelectedReports);
-    $('#deleteReport').addEventListener('click', () => deleteCurrentReport().catch((error) => window.alert(`删除失败：${error.message || error}`)));
     $('#openStorage').addEventListener('click', openStorageModal);
+    $('#storageSiteFilter').addEventListener('change', () => renderStoredData());
+    $('#storageSelectAll').addEventListener('change', (event) => { $$('.storage-select').forEach((checkbox) => { checkbox.checked = event.currentTarget.checked; }); updateStoredSelectionState(); });
+    $('#storageFiles').addEventListener('change', (event) => { if (event.target.matches('.storage-select')) updateStoredSelectionState(); });
+    $('#deleteSelectedReports').addEventListener('click', () => deleteSelectedStoredReports().catch((error) => { $('#storageModalStatus').className = 'status error'; $('#storageModalStatus').textContent = `删除失败：${error.message || error}`; }));
     $('#exportStorage').addEventListener('click', exportStoredData);
     $('#closeStorageModal').addEventListener('click', closeStorageModal);
     $('#closeStorageButton').addEventListener('click', closeStorageModal);
