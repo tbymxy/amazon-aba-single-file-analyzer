@@ -25,6 +25,7 @@
     .file-input { display: none; }
     .file-button { display: inline-flex; align-items: center; justify-content: center; min-height: 35px; padding: 8px 13px; border: 0; border-radius: 8px; color: #fff; background: #2f78f5; box-shadow: 0 3px 9px #3178f638; font-size: 12px; font-weight: 700; cursor: pointer; }
     .file-button:hover { background: #1968e9; }
+    .file-button.disabled { opacity: .5; pointer-events: none; box-shadow: none; }
     .import-actions { display: flex; align-items: center; justify-content: center; gap: 9px; }
     .compare-button { color: #315c56; border: 1px solid #9ab8b2; background: #eef6f4; box-shadow: none; }
     .compare-button:hover { color: #fff; background: #527d75; }
@@ -43,6 +44,7 @@
     .report-actions { display: flex; align-items: center; gap: 7px; }
     .delete-button { height: 34px; padding: 0 11px; border: 1px solid #e2c8cb; border-radius: 7px; color: #9a4047; background: #fff7f7; font-size: 11px; font-weight: 700; cursor: pointer; }
     .delete-button:hover { color: #fff; background: #b34c55; }
+    .cancel-button { color: #9a4047; border-color: #dfb9bd; background: #fff4f5; }
     .toolbar { display: flex; align-items: end; gap: 9px; flex-wrap: wrap; padding: 12px; border: 1px solid #e4eaf3; border-radius: 12px; background: #fff; box-shadow: 0 3px 14px #23386408; }
     .toolbar label { display: grid; gap: 4px; color: #7a879b; font-size: 10px; font-weight: 700; }
     .toolbar input, .toolbar select { height: 34px; padding: 7px 8px; border: 1px solid #dce4ef; border-radius: 7px; color: #263852; background: #fff; font-size: 12px; outline-color: #3178f6; }
@@ -134,14 +136,14 @@
     <header class="topbar">
       <div class="logo">ABA</div>
       <h1>热门搜索词分析器</h1>
-      <span class="local-badge">本地持久化 · 1.8.1</span>
+      <span class="local-badge">本地持久化 · 1.9.0</span>
     </header>
     <input id="importInput" class="file-input" type="file" accept=".csv,text/csv" multiple />
     <section id="uploadPanel" class="upload-panel">
       <div>
         <h2>导入 ABA 热门搜索词 CSV</h2>
         <p>可一次选择一份或多份、多站点、多周次报告</p>
-        <div class="import-actions"><label class="file-button" for="importInput">导入</label></div>
+        <div class="import-actions"><label class="file-button import-trigger" for="importInput">导入</label><button id="cancelImport" class="reset-button cancel-button hidden" type="button">取消导入</button></div>
         <div id="parseStatus" class="status"></div>
         <progress id="parseProgress" class="hidden" max="100" value="0"></progress>
       </div>
@@ -154,7 +156,7 @@
         <label>查看周<select id="currentReport"></select></label>
         <label>对比周<select id="compareReport"><option value="">不对比</option></select></label>
         <span id="storageStatus" class="storage-status">正在读取本地报告…</span>
-        <div class="report-actions"><label class="file-button replace-file compare-button" for="importInput">导入</label><button id="openStorage" class="reset-button" type="button">本地数据</button></div>
+        <div class="report-actions"><label class="file-button replace-file compare-button import-trigger" for="importInput">导入</label><button id="openStorage" class="reset-button" type="button">本地数据</button></div>
       </div>
       <div class="toolbar">
         <label>搜索词<input id="keyword" placeholder="筛选关键词" autocomplete="off" /></label>
@@ -193,11 +195,11 @@
   <div id="storageModal" class="trend-modal hidden" role="dialog" aria-modal="true" aria-labelledby="storageModalTitle">
     <div class="trend-dialog">
       <div class="trend-dialog-header"><h2 id="storageModalTitle">本地数据</h2><button id="closeStorageModal" type="button" aria-label="关闭">×</button></div>
-      <p class="storage-description">分析数据保存在浏览器私有存储中；源报告仍在电脑原位置，未复制到浏览器。可按站点查看、批量删除，或将全部本地分析数据复制到自己选择的普通文件夹。</p>
+      <p class="storage-description">分析数据保存在浏览器私有存储中；源报告仍在电脑原位置，未复制到浏览器。可按站点查看、批量删除、清理孤立缓存，并将本地数据导出或从备份恢复。</p>
       <div class="storage-location">浏览器私有存储 (OPFS) / aba-reports</div>
       <div class="storage-toolbar"><label>站点<select id="storageSiteFilter"><option value="">全部站点</option></select></label></div>
       <div class="storage-table-wrap"><table class="storage-table"><thead><tr><th class="select-column"><input id="storageSelectAll" type="checkbox" aria-label="全选当前站点报告"></th><th>站点</th><th>周次</th><th>源报告</th><th>分析数据</th><th>趋势索引</th></tr></thead><tbody id="storageFiles"></tbody></table></div>
-      <div class="storage-footer"><div id="storageModalStatus" class="status"></div><button id="deleteSelectedReports" class="delete-button" type="button" disabled>删除选中</button><button id="exportStorage" class="file-button" type="button">导出全部到文件夹</button><button id="closeStorageButton" class="reset-button" type="button">关闭</button></div>
+      <div class="storage-footer"><div id="storageModalStatus" class="status"></div><button id="deleteSelectedReports" class="delete-button" type="button" disabled>删除选中</button><button id="cleanupOrphans" class="reset-button" type="button" disabled>清理孤立缓存</button><button id="restoreStorage" class="reset-button" type="button">恢复备份</button><button id="exportStorage" class="file-button" type="button">导出备份</button><button id="closeStorageButton" class="reset-button" type="button">关闭</button></div>
     </div>
   </div>
   <script>
@@ -235,6 +237,7 @@
     let trendRangeKey = '';
     let openTrend = null;
     let storageRows = [];
+    let storageOrphans = [];
     const trendCache = new Map();
 
     function openDatabase() {
@@ -270,7 +273,8 @@
     }
 
     const getStoredReports = () => reportStore('readonly', (store) => store.getAll());
-    const putStoredReport = (report) => reportStore('readwrite', (store) => store.put(report));
+    const persistedReport = (report) => { const value = { ...report }; delete value._integrity; return value; };
+    const putStoredReport = (report) => reportStore('readwrite', (store) => store.put(persistedReport(report)));
     const deleteStoredReportMeta = (id) => reportStore('readwrite', (store) => store.delete(id));
     const formatBytes = (bytes) => {
       if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
@@ -311,6 +315,33 @@
       } catch (error) { if (error?.name === 'NotFoundError') return null; throw error; }
     }
 
+    async function analysisIntegrity(report) {
+      const file = await storedFile(report.storageFile);
+      if (!file) return { status: 'missing', file: null };
+      if (Number(report.storageVersion || 1) < 2) return { status: 'ok', file };
+      try {
+        if (file.size < 64) return { status: 'corrupt', file };
+        const header = await file.slice(0, 64).arrayBuffer();
+        const view = new DataView(header);
+        const count = view.getUint32(8, true), indexOffset = Number(view.getBigUint64(16, true));
+        if (view.getUint32(0, true) !== 0x32414241 || view.getUint32(4, true) !== 2 || indexOffset < 64 || indexOffset > file.size || count !== Number(report.rowCount || count)) return { status: 'corrupt', file };
+        return { status: 'ok', file };
+      } catch { return { status: 'corrupt', file }; }
+    }
+
+    async function annotateIntegrity(reports) {
+      return Promise.all(reports.map(async (report) => ({ ...report, _integrity: (await analysisIntegrity(report)).status })));
+    }
+
+    async function listReportDirectoryFiles() {
+      if (!navigator.storage?.getDirectory) return [];
+      const root = await navigator.storage.getDirectory();
+      const directory = await root.getDirectoryHandle(REPORT_DIRECTORY, { create: true });
+      const files = [];
+      for await (const [name, handle] of directory.entries()) if (handle.kind === 'file') files.push(await handle.getFile());
+      return files;
+    }
+
     function updateStoredSelectionState() {
       const checkboxes = Array.from($$('.storage-select'));
       const selected = checkboxes.filter((checkbox) => checkbox.checked).length;
@@ -327,12 +358,14 @@
       const selectedSite = $('#storageSiteFilter').value;
       const rows = storageRows.filter(({ report }) => !selectedSite || report.site === selectedSite);
       if (!rows.length) $('#storageFiles').innerHTML = `<tr><td colspan="6">${storageRows.length ? '当前站点没有已导入报告' : '尚未导入报告'}</td></tr>`;
-      else $('#storageFiles').innerHTML = rows.map(({ report, analysis, trend }) => `<tr><td class="select-column"><input class="storage-select" type="checkbox" value="${escapeHtml(report.id)}" aria-label="选择 ${escapeHtml(report.site)} ${escapeHtml(report.label)}"></td><td>${report.site}</td><td>${escapeHtml(report.label)}</td><td class="file-name" title="${escapeHtml(report.fileName)}">${escapeHtml(report.fileName)} · ${formatBytes(Number(report.sourceSize) || 0)}（未复制）</td><td class="file-name" title="${escapeHtml(report.storageFile || '')}">${analysis ? `${escapeHtml(report.storageFile)} · ${formatBytes(analysis.size)}` : '文件缺失'}</td><td class="file-name" title="${escapeHtml(report.trendFile || '')}">${trend ? `${escapeHtml(report.trendFile)} · ${formatBytes(trend.size)}` : '待建立'}</td></tr>`).join('');
+      else $('#storageFiles').innerHTML = rows.map(({ report, analysis, trend }) => `<tr><td class="select-column"><input class="storage-select" type="checkbox" value="${escapeHtml(report.id)}" aria-label="选择 ${escapeHtml(report.site)} ${escapeHtml(report.label)}"></td><td>${report.site}</td><td>${escapeHtml(report.label)}</td><td class="file-name" title="${escapeHtml(report.fileName)}">${escapeHtml(report.fileName)} · ${formatBytes(Number(report.sourceSize) || 0)}（未复制）</td><td class="file-name" title="${escapeHtml(report.storageFile || '')}">${report._integrity === 'corrupt' ? '文件损坏，可重新导入修复' : analysis ? `${escapeHtml(report.storageFile)} · ${formatBytes(analysis.size)}` : '文件缺失，可重新导入修复'}</td><td class="file-name" title="${escapeHtml(report.trendFile || '')}">${trend ? `${escapeHtml(report.trendFile)} · ${formatBytes(trend.size)}` : '待自动重建'}</td></tr>`).join('');
       const sourceBytes = rows.reduce((sum, row) => sum + (Number(row.report.sourceSize) || 0), 0);
       const analysisBytes = rows.reduce((sum, row) => sum + (row.analysis?.size || 0), 0);
       const trendBytes = rows.reduce((sum, row) => sum + (row.trend?.size || 0), 0);
       $('#storageModalStatus').className = 'status';
-      $('#storageModalStatus').textContent = `${rows.length} 份报告 · 源报告原始大小（参考）${formatBytes(sourceBytes)} · 本地分析数据 ${formatBytes(analysisBytes)} · 趋势索引 ${formatBytes(trendBytes)}${message ? ` · ${message}` : ''}`;
+      const orphanBytes = storageOrphans.reduce((sum, file) => sum + file.size, 0);
+      $('#storageModalStatus').textContent = `${rows.length} 份报告 · 源报告原始大小（参考）${formatBytes(sourceBytes)} · 本地分析数据 ${formatBytes(analysisBytes)} · 趋势索引 ${formatBytes(trendBytes)}${storageOrphans.length ? ` · 孤立缓存 ${storageOrphans.length} 个/${formatBytes(orphanBytes)}` : ''}${message ? ` · ${message}` : ''}`;
+      $('#cleanupOrphans').disabled = storageOrphans.length === 0;
       $('#storageSelectAll').checked = false;
       $('#storageSelectAll').indeterminate = false;
       updateStoredSelectionState();
@@ -346,6 +379,8 @@
         const [analysis, trend] = await Promise.all([storedFile(report.storageFile), storedFile(report.trendFile)]);
         return { report, analysis, trend };
       }));
+      const referenced = new Set(catalog.flatMap((report) => [report.storageFile, report.trendFile]).filter(Boolean));
+      storageOrphans = (await listReportDirectoryFiles()).filter((file) => !referenced.has(file.name));
       const filter = $('#storageSiteFilter');
       const previousSite = filter.value;
       const sites = Object.keys(MARKETPLACES).filter((code) => storageRows.some(({ report }) => report.site === code));
@@ -383,16 +418,92 @@
         const report = selected[index].report;
         $('#storageModalStatus').textContent = `正在删除 ${index + 1}/${selected.length}：${report.site} · ${report.label}`;
         try {
-          await deleteStoredReportFile(report.storageFile);
-          await deleteStoredReportFile(report.trendFile);
+          const fileErrors = [];
+          for (const name of [report.storageFile, report.trendFile].filter(Boolean)) {
+            try { await deleteStoredReportFile(name); } catch (error) { fileErrors.push(`${name}：${error.message || error}`); }
+          }
           await deleteStoredReportMeta(report.id);
           deleted++;
+          if (fileErrors.length) failed.push(...fileErrors);
         } catch (error) { failed.push(`${report.site} ${report.label}：${error.message || error}`); }
       }
       const preferredSite = $('#marketplace').value;
       await refreshCatalog({ site: preferredSite });
       await inspectStoredData(failed.length ? `已删除 ${deleted} 份，${failed.length} 份失败` : `已删除 ${deleted} 份`);
       if (failed.length) window.alert(`以下报告删除失败，请重试：\n\n${failed.join('\n')}`);
+    }
+
+    async function cleanupOrphanFiles() {
+      if (importPreflight || importJob) { window.alert('请先等待当前导入完成或取消导入，再清理孤立缓存。'); return; }
+      if (!storageOrphans.length) return;
+      if (!window.confirm(`确定清理 ${storageOrphans.length} 个没有报告目录引用的孤立缓存文件？\n\n这些文件通常由中断的导入或旧任务遗留。`)) return;
+      let deleted = 0;
+      const failed = [];
+      for (let index = 0; index < storageOrphans.length; index++) {
+        const file = storageOrphans[index];
+        $('#storageModalStatus').textContent = `正在清理 ${index + 1}/${storageOrphans.length}：${file.name}`;
+        try { await deleteStoredReportFile(file.name); deleted++; }
+        catch (error) { failed.push(`${file.name}：${error.message || error}`); }
+      }
+      await inspectStoredData(`已清理 ${deleted} 个孤立缓存${failed.length ? `，${failed.length} 个失败` : ''}`);
+    }
+
+    async function copyFileHandle(sourceDirectory, destinationDirectory, name) {
+      const input = await (await sourceDirectory.getFileHandle(name)).getFile();
+      const output = await (await destinationDirectory.getFileHandle(name, { create: true })).createWritable();
+      try { await input.stream().pipeTo(output); } catch (error) { try { await output.abort(); } catch {} throw error; }
+    }
+
+    async function restoreStoredData() {
+      if (!window.showDirectoryPicker) { window.alert('当前浏览器不支持恢复文件夹，请使用最新版 Chrome 或 Edge。'); return; }
+      try {
+        const selected = await window.showDirectoryPicker({ id: 'amazon-aba-restore-data', mode: 'read' });
+        let source = selected;
+        try { await source.getFileHandle('reports.json'); }
+        catch { source = await selected.getDirectoryHandle('Amazon-ABA-本地数据'); }
+        const manifestFile = await (await source.getFileHandle('reports.json')).getFile();
+        const manifest = JSON.parse(await manifestFile.text());
+        if (!Array.isArray(manifest.reports)) throw new Error('reports.json 格式无效。');
+        const root = await navigator.storage.getDirectory();
+        const destination = await root.getDirectoryHandle(REPORT_DIRECTORY, { create: true });
+        const existing = await getStoredReports();
+        let restored = 0, skipped = 0;
+        const failed = [];
+        for (let index = 0; index < manifest.reports.length; index++) {
+          const report = manifest.reports[index];
+          $('#storageModalStatus').textContent = `正在恢复 ${index + 1}/${manifest.reports.length}：${report?.site || ''} ${report?.label || ''}`;
+          if (!report?.id || !MARKETPLACES[report.site] || !report.storageFile) { failed.push(`第 ${index + 1} 份元数据无效`); continue; }
+          if (existing.some((item) => item.id === report.id)) { skipped++; continue; }
+          const sameWeek = existing.filter((item) => item.site === report.site && item.endDate === report.endDate);
+          if (sameWeek.length && !window.confirm(`${report.site} 站 ${report.label} 已有不同版本。\n\n确定使用备份版本替换当前版本吗？`)) { skipped++; continue; }
+          const copied = [];
+          try {
+            await copyFileHandle(source, destination, report.storageFile); copied.push(report.storageFile);
+            if (report.trendFile) { try { await copyFileHandle(source, destination, report.trendFile); copied.push(report.trendFile); } catch (error) { if (error?.name !== 'NotFoundError') throw error; report.trendFile = null; } }
+            const integrity = await analysisIntegrity(report);
+            if (integrity.status !== 'ok') throw new Error('分析数据缺失或损坏');
+            for (const old of sameWeek) {
+              await deleteStoredReportMeta(old.id);
+              await deleteStoredReportFile(old.storageFile);
+              await deleteStoredReportFile(old.trendFile);
+              const position = existing.findIndex((item) => item.id === old.id); if (position >= 0) existing.splice(position, 1);
+            }
+            const restoredReport = { ...report, importedAt: report.importedAt || new Date().toISOString() };
+            delete restoredReport._integrity;
+            await putStoredReport(restoredReport); existing.push(restoredReport); restored++;
+          } catch (error) {
+            for (const name of copied) await deleteStoredReportFile(name);
+            failed.push(`${report.site || ''} ${report.label || report.fileName || ''}：${error.message || error}`);
+          }
+        }
+        await refreshCatalog();
+        await inspectStoredData(`已恢复 ${restored} 份，跳过 ${skipped} 份${failed.length ? `，失败 ${failed.length} 份` : ''}`);
+        if (failed.length) window.alert(`部分备份恢复失败：\n\n${failed.slice(0, 12).join('\n')}`);
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+        $('#storageModalStatus').className = 'status error';
+        $('#storageModalStatus').textContent = `恢复失败：${error.message || error}`;
+      }
     }
 
     async function exportStoredData() {
@@ -415,9 +526,9 @@
           } catch (error) { if (error?.name !== 'NotFoundError') throw error; }
         }
         const manifest = await (await destination.getFileHandle('reports.json', { create: true })).createWritable();
-        await manifest.write(new TextEncoder().encode(JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), reports: catalog }, null, 2))); await manifest.close();
+        await manifest.write(new TextEncoder().encode(JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), reports: catalog.map(persistedReport) }, null, 2))); await manifest.close();
         const readme = await (await destination.getFileHandle('说明.txt', { create: true })).createWritable();
-        await readme.write(new TextEncoder().encode('Amazon ABA 本地持久化数据备份\r\n\r\n*.aba2 为流式二进制分析数据，*.jsonl.gz 为旧版压缩分析数据，*.trend.bin 为排名趋势索引，reports.json 为报告目录。\r\n请保留原始 CSV；此备份主要用于查看和防止浏览器数据丢失。\r\n')); await readme.close();
+        await readme.write(new TextEncoder().encode('Amazon ABA 本地持久化数据备份\r\n\r\n*.aba2 为流式二进制分析数据，*.jsonl.gz 为旧版压缩分析数据，*.trend.bin 为排名趋势索引，reports.json 为报告目录。\r\n可在分析器的“本地数据 → 恢复备份”中选择本文件夹或其上级文件夹进行恢复。请同时保留原始 CSV。\r\n')); await readme.close();
         $('#storageModalStatus').className = 'status';
         $('#storageModalStatus').textContent = `已导出 ${copied} 个数据文件到“${selected.name}\\Amazon-ABA-本地数据”，可在 Windows 资源管理器中查看。`;
       } catch (error) {
@@ -427,229 +538,8 @@
       }
     }
 
-    const workerCode = `
-      const normalize = (value) => String(value || '').trim().toLowerCase().replace(/\\s+/g, ' ');
-      const asNumber = (value) => Number(String(value || '').replaceAll('%', '').replaceAll(',', '').trim()) || 0;
-      const bytesToHex = (bytes) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-      const hashPair = (value) => {
-        let first = 2166136261, second = 5381;
-        for (let index = 0; index < value.length; index++) {
-          const code = value.charCodeAt(index);
-          first = Math.imul(first ^ code, 16777619);
-          second = Math.imul(second, 33) ^ code;
-        }
-        return [first >>> 0, second >>> 0];
-      };
-      async function reportDirectory() {
-        if (!navigator.storage?.getDirectory) return null;
-        const root = await navigator.storage.getDirectory();
-        return root.getDirectoryHandle('aba-reports', { create: true });
-      }
-      async function saveReport(site, period, hash, records, token) {
-        if (typeof CompressionStream === 'undefined') throw new Error('当前浏览器不支持本地压缩存储，请使用最新版 Chrome、Edge 或安装后的 PWA。');
-        const directory = await reportDirectory();
-        if (!directory) throw new Error('当前浏览器不支持本地持久化存储。');
-        const fileName = site + '_' + period.endDate + '_' + hash.slice(0, 24) + '.jsonl.gz';
-        const handle = await directory.getFileHandle(fileName, { create: true });
-        const destination = await handle.createWritable();
-        const compression = new CompressionStream('gzip');
-        const piping = compression.readable.pipeTo(destination);
-        const writer = compression.writable.getWriter();
-        const encoder = new TextEncoder();
-        for (let start = 0; start < records.length; start += 5000) {
-          const block = records.slice(start, start + 5000).map((row) => JSON.stringify([row.rank, row.term, row.top3Click, row.top3Conversion])).join('\\n') + '\\n';
-          await writer.write(encoder.encode(block));
-          if (start && start % 50000 === 0) self.postMessage({ type: 'storage-progress', token, count: start, totalRecords: records.length });
-        }
-        await writer.close();
-        await piping;
-        return fileName;
-      }
-      async function saveTrendIndex(site, period, hash, records, token, forcedFileName = null, progressType = 'index-progress', reportIndex = 0, reportTotal = 1) {
-        const directory = await reportDirectory();
-        if (!directory) throw new Error('当前浏览器不支持本地趋势索引。');
-        const fileName = forcedFileName || (site + '_' + period.endDate + '_' + hash.slice(0, 24) + '.trend.bin');
-        const count = records.length;
-        const firstHashes = new Uint32Array(count);
-        const secondHashes = new Uint32Array(count);
-        const order = new Array(count);
-        for (let index = 0; index < count; index++) {
-          const pair = hashPair(records[index].searchKey);
-          firstHashes[index] = pair[0]; secondHashes[index] = pair[1]; order[index] = index;
-          if (index && index % 50000 === 0) self.postMessage({ type: progressType, token, reportIndex, reportTotal, count: index, totalRecords: count });
-        }
-        order.sort((left, right) => firstHashes[left] - firstHashes[right] || secondHashes[left] - secondHashes[right] || records[left].rank - records[right].rank);
-        const buffer = new ArrayBuffer(12 + count * 12);
-        const view = new DataView(buffer);
-        view.setUint32(0, 0x41424154, true); view.setUint32(4, 1, true); view.setUint32(8, count, true);
-        for (let position = 0; position < count; position++) {
-          const source = order[position], offset = 12 + position * 12;
-          view.setUint32(offset, firstHashes[source], true);
-          view.setUint32(offset + 4, secondHashes[source], true);
-          view.setUint32(offset + 8, records[source].rank, true);
-        }
-        const handle = await directory.getFileHandle(fileName, { create: true });
-        const destination = await handle.createWritable();
-        await destination.write(buffer);
-        await destination.close();
-        return fileName;
-      }
-      async function readTrendIndex(fileName) {
-        const directory = await reportDirectory();
-        if (!directory) throw new Error('当前浏览器不支持本地趋势索引。');
-        const handle = await directory.getFileHandle(fileName);
-        const file = await handle.getFile();
-        const buffer = await file.arrayBuffer();
-        const view = new DataView(buffer);
-        if (buffer.byteLength < 12 || view.getUint32(0, true) !== 0x41424154 || view.getUint32(4, true) !== 1) throw new Error('趋势索引损坏或版本不兼容。');
-        return buffer;
-      }
-      function lookupRank(buffer, first, second) {
-        const view = new DataView(buffer), count = view.getUint32(8, true);
-        let low = 0, high = count - 1, found = -1;
-        while (low <= high) {
-          const middle = (low + high) >>> 1, offset = 12 + middle * 12;
-          const a = view.getUint32(offset, true), b = view.getUint32(offset + 4, true);
-          if (a === first && b === second) { found = middle; high = middle - 1; }
-          else if (a < first || (a === first && b < second)) low = middle + 1;
-          else high = middle - 1;
-        }
-        if (found < 0) return null;
-        let best = Infinity;
-        for (let position = found; position < count; position++) {
-          const offset = 12 + position * 12;
-          if (view.getUint32(offset, true) !== first || view.getUint32(offset + 4, true) !== second) break;
-          best = Math.min(best, view.getUint32(offset + 8, true));
-        }
-        return Number.isFinite(best) ? best : null;
-      }
-      async function loadReport(fileName, token, index, total, progressType = 'load-progress') {
-        if (typeof DecompressionStream === 'undefined') throw new Error('当前浏览器不支持读取本地压缩报告。');
-        const directory = await reportDirectory();
-        if (!directory) throw new Error('当前浏览器不支持本地持久化存储。');
-        const handle = await directory.getFileHandle(fileName);
-        const file = await handle.getFile();
-        const reader = file.stream().pipeThrough(new DecompressionStream('gzip')).getReader();
-        const decoder = new TextDecoder('utf-8');
-        const records = [];
-        let pending = '';
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          pending += decoder.decode(value, { stream: true });
-          const lines = pending.split('\\n');
-          pending = lines.pop() || '';
-          for (const line of lines) {
-            if (!line) continue;
-            const item = JSON.parse(line);
-            const term = String(item[1]);
-            records.push({ rank: Number(item[0]), term, searchKey: normalize(term), top3Click: Number(item[2]), top3Conversion: Number(item[3]) });
-          }
-          if (records.length && records.length % 50000 < 5000) self.postMessage({ type: progressType, token, index, total, count: records.length });
-        }
-        if (pending.trim()) {
-          const item = JSON.parse(pending);
-          const term = String(item[1]);
-          records.push({ rank: Number(item[0]), term, searchKey: normalize(term), top3Click: Number(item[2]), top3Conversion: Number(item[3]) });
-        }
-        return records;
-      }
-      async function queryTrends(reports, terms, token) {
-        const hashes = terms.map((key) => ({ key, pair: hashPair(key) }));
-        const ranks = Object.fromEntries(hashes.map((item) => [item.key, new Array(reports.length).fill(null)]));
-        const created = [];
-        for (let reportIndex = 0; reportIndex < reports.length; reportIndex++) {
-          const report = reports[reportIndex];
-          const hadTrendMetadata = Boolean(report.trendFile);
-          let trendFile = report.trendFile || String(report.storageFile).replace(/\\.jsonl\\.gz$/, '.trend.bin');
-          let indexBuffer;
-          try { indexBuffer = await readTrendIndex(trendFile); if (!hadTrendMetadata) created.push({ id: report.id, trendFile }); }
-          catch {
-            self.postMessage({ type: 'trend-migration', token, reportIndex, reportTotal: reports.length, label: report.label });
-            const records = await loadReport(report.storageFile, token, reportIndex, reports.length, 'trend-migration-progress');
-            trendFile = await saveTrendIndex(report.site, report, report.fileHash || 'legacy', records, token, trendFile, 'trend-index-progress', reportIndex, reports.length);
-            indexBuffer = await readTrendIndex(trendFile);
-            created.push({ id: report.id, trendFile });
-          }
-          for (const item of hashes) ranks[item.key][reportIndex] = lookupRank(indexBuffer, item.pair[0], item.pair[1]);
-          self.postMessage({ type: 'trend-progress', token, reportIndex, reportTotal: reports.length, label: report.label });
-        }
-        return { ranks, created };
-      }
-      function reportPeriod(firstRecord) {
-        const source = firstRecord.join(' ').replace(/^\\uFEFF/, '');
-        const match = /(?:周|週|week|woche|semaine|settimana|semana)\\s*(\\d{1,2})\\s*\\|\\s*(\\d{4}-\\d{2}-\\d{2})\\s*-\\s*(\\d{4}-\\d{2}-\\d{2})/i.exec(source);
-        if (!match) return null;
-        const weekNumber = Number(match[1]);
-        return { weekNumber, startDate: match[2], endDate: match[3], label: '周 ' + weekNumber + ' | ' + match[2] + ' - ' + match[3] };
-      }
-      function fieldIndexes(headers) {
-        const fields = headers.map((raw, index) => ({ index, value: normalize(raw) }));
-        const rank = fields.find((field) => field.value === '搜索频率排名' || field.value === 'search frequency rank');
-        const term = fields.find((field) => field.value === '搜索词' || field.value === 'search term');
-        const click = fields.filter((field) => field.value.includes('点击份额') || field.value.includes('click share')).slice(0, 3);
-        const conversion = fields.filter((field) => field.value.includes('转化贡献') || field.value.includes('conversion share')).slice(0, 3);
-        if (!rank || !term || click.length < 3 || conversion.length < 3) throw new Error('无法识别 ABA 核心字段，请确认选择的是热门搜索词简单报告 CSV。');
-        return { rank: rank.index, term: term.index, click: click.map((field) => field.index), conversion: conversion.map((field) => field.index) };
-      }
-      function parse(text, onRecord) {
-        let cell = '', record = [], quoted = false, index = 0;
-        const finishCell = () => { record.push(cell); cell = ''; };
-        const finishRecord = () => { finishCell(); onRecord(record, index); record = []; };
-        while (index < text.length) {
-          const char = text[index];
-          if (quoted) {
-            if (char === '"' && text[index + 1] === '"') { cell += '"'; index += 2; continue; }
-            if (char === '"') { quoted = false; index++; continue; }
-            cell += char; index++; continue;
-          }
-          if (char === '"' && cell === '') { quoted = true; index++; continue; }
-          if (char === ',') { finishCell(); index++; continue; }
-          if (char === '\\n') { finishRecord(); index++; continue; }
-          if (char === '\\r') { if (text[index + 1] === '\\n') index++; finishRecord(); index++; continue; }
-          cell += char; index++;
-        }
-        if (cell.length || record.length) finishRecord();
-      }
-      self.onmessage = async ({ data }) => {
-        const { action = 'parse', file, index, total, token, site, storageFile, reports, terms } = data;
-        try {
-          if (action === 'load') {
-            const records = await loadReport(storageFile, token, index, total);
-            self.postMessage({ type: 'loaded', token, index, total, records });
-            return;
-          }
-          if (action === 'trend') {
-            const result = await queryTrends(reports, terms, token);
-            self.postMessage({ type: 'trend-result', token, ranks: result.ranks, created: result.created });
-            return;
-          }
-          const buffer = await file.arrayBuffer();
-          const hash = bytesToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', buffer)));
-          const text = new TextDecoder('utf-8').decode(buffer);
-          let indexes = null, count = 0, sourceRow = 0, period = null;
-          const records = [];
-          parse(text, (record, position) => {
-            if (sourceRow++ === 0) period = reportPeriod(record);
-            if (!indexes) { try { indexes = fieldIndexes(record); } catch { return; } return; }
-            const rank = Number(record[indexes.rank]);
-            const term = String(record[indexes.term] || '').trim();
-            if (!Number.isFinite(rank) || rank < 1 || !term) return;
-            records.push({ rank, term, searchKey: normalize(term), top3Click: indexes.click.reduce((sum, field) => sum + asNumber(record[field]), 0), top3Conversion: indexes.conversion.reduce((sum, field) => sum + asNumber(record[field]), 0) });
-            count++;
-            if (count % 20000 === 0) self.postMessage({ type: 'progress', index, total, percent: Math.min(99, Math.round((position / Math.max(1, text.length)) * 100)), count });
-          });
-          if (!period) throw new Error('无法从 CSV 第一行识别周数与日期。');
-          if (!indexes) throw new Error('未找到 ABA 表头。');
-          records.sort((a, b) => a.rank - b.rank || a.term.localeCompare(b.term));
-          const savedFile = await saveReport(site, period, hash, records, token);
-          const trendFile = await saveTrendIndex(site, period, hash, records, token);
-          self.postMessage({ type: 'complete', token, index, total, period, fileHash: hash, storageFile: savedFile, trendFile, rowCount: records.length });
-        } catch (error) { self.postMessage({ type: action === 'trend' ? 'trend-error' : 'error', token, index, total, message: error instanceof Error ? error.message : 'CSV 解析失败。' }); }
-      };
-    `;
     const workerUrl = './aba-worker.js';
-    const parser = new Worker(workerUrl);
+    let parser = new Worker(workerUrl);
     let trendParser = new Worker(workerUrl);
     let queryParser = new Worker(workerUrl);
 
@@ -661,7 +551,7 @@
 
     function selectedTrendReports() {
       const site = $('#marketplace').value, start = $('#rangeStart').value, end = $('#rangeEnd').value;
-      return catalog.filter((report) => report.site === site && report.endDate >= start && report.endDate <= end).sort(oldestFirst);
+      return catalog.filter((report) => report.site === site && report._integrity === 'ok' && report.endDate >= start && report.endDate <= end).sort(oldestFirst);
     }
 
     function trendKey(rangeKey, searchKey) { return `${rangeKey}\u0001${searchKey}`; }
@@ -732,13 +622,19 @@
     function restartTrendWorker() {
       trendParser.terminate();
       trendParser = new Worker(workerUrl);
-      trendParser.onmessage = handleTrendMessage;
+      bindTrendWorker();
+    }
+
+    function restartParserWorker() {
+      parser.terminate();
+      parser = new Worker(workerUrl);
+      bindParserWorker();
     }
 
     function restartQueryWorker() {
       queryParser.terminate();
       queryParser = new Worker(workerUrl);
-      queryParser.onmessage = handleQueryMessage;
+      bindQueryWorker();
     }
 
     function filterSnapshot() {
@@ -922,11 +818,12 @@
     function scheduleFilter() { window.clearTimeout(state.filterTimer); state.filterTimer = window.setTimeout(applyFilters, state.paged ? 450 : 160); }
 
     let importJob = null;
+    let importPreflight = null;
     const createToken = () => crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
     const reportTime = (report) => Date.parse(report.endDate) || 0;
     const newestFirst = (a, b) => reportTime(b) - reportTime(a) || b.weekNumber - a.weekNumber || String(b.importedAt).localeCompare(String(a.importedAt));
     const oldestFirst = (a, b) => -newestFirst(a, b);
-    const reportLabel = (report) => `${report.label} · ${Number(report.rowCount || 0).toLocaleString()} 条`;
+    const reportLabel = (report) => `${report._integrity && report._integrity !== 'ok' ? '⚠ ' : ''}${report.label} · ${Number(report.rowCount || 0).toLocaleString()} 条`;
 
     function setImportStatus(message, error = false) {
       $('#parseStatus').textContent = message;
@@ -934,12 +831,21 @@
     }
 
     function importError(message) {
+      importPreflight?.hashWorker?.terminate();
+      importPreflight = null;
       importJob = null;
+      setImportBusy(false);
       $('#parseProgress').classList.add('hidden');
       $('#uploadPanel').classList.remove('hidden');
       $('#workspace').classList.toggle('hidden', catalog.length === 0);
       setImportStatus(message, true);
       updateStorageStatus();
+    }
+
+    function setImportBusy(busy) {
+      $('#importInput').disabled = busy;
+      $$('.import-trigger').forEach((trigger) => { trigger.classList.toggle('disabled', busy); trigger.setAttribute('aria-disabled', String(busy)); });
+      $('#cancelImport').classList.toggle('hidden', !busy);
     }
 
     function siteForFile(file, fallback) {
@@ -972,45 +878,121 @@
       return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
     }
 
-    function matchesImportedReport(entry, reports) {
-      return reports.some((report) => {
-        if (report.site !== entry.site || Number(report.sourceSize) !== entry.file.size) return false;
+    async function sourcePeriod(file) {
+      const text = new TextDecoder('utf-8').decode(await file.slice(0, Math.min(file.size, 256 * 1024)).arrayBuffer());
+      const firstLine = text.split(/\r?\n/, 1)[0].replace(/^\uFEFF/, '');
+      const match = /(?:周|週|week|woche|semaine|settimana|semana)\s*(\d{1,2})\s*\|\s*(\d{4}-\d{2}-\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})/i.exec(firstLine);
+      return match ? { weekNumber: Number(match[1]), startDate: match[2], endDate: match[3], label: `周 ${Number(match[1])} | ${match[2]} - ${match[3]}` } : null;
+    }
+
+    function duplicateCandidates(entry, reports) {
+      return reports.filter((report) => {
+        if (report._integrity !== 'ok' || report.site !== entry.site || Number(report.sourceSize) !== entry.file.size) return false;
         if (entry.sourceFingerprint && report.sourceFingerprint) return report.sourceFingerprint === entry.sourceFingerprint;
         return !report.sourceFingerprint && report.fileName === entry.file.name;
       });
     }
 
+    function fullFileHash(entry, index, total, preparation) {
+      return new Promise((resolve, reject) => {
+        const worker = new Worker(workerUrl);
+        preparation.hashWorker = worker;
+        const token = `${preparation.token}-hash-${index}`;
+        const close = () => { worker.terminate(); if (preparation.hashWorker === worker) preparation.hashWorker = null; };
+        preparation.hashCancel = () => { close(); resolve(null); };
+        worker.onmessage = ({ data }) => {
+          if (data.token !== token) return;
+          if (data.type === 'hash-progress') { setImportStatus(`正在严格核对第 ${index + 1}/${total} 份重复候选：${entry.file.name} · ${data.percent}%`); $('#parseProgress').value = data.percent; return; }
+          if (data.type === 'hash-result') { close(); preparation.hashCancel = null; resolve(data.fileHash); }
+          if (data.type === 'hash-error') { close(); reject(new Error(data.message)); }
+        };
+        worker.onerror = (event) => { close(); reject(new Error(event.message || '完整文件校验Worker异常退出。')); };
+        worker.onmessageerror = () => { close(); reject(new Error('完整文件校验结果无法读取。')); };
+        worker.postMessage({ action: 'hash-file', file: entry.file, token, index, total });
+      });
+    }
+
+    function stagedImportFiles(job, index = job.current) {
+      const safe = String(job.token).replace(/[^a-zA-Z0-9-]/g, '') + '-' + index;
+      const site = job.files[index]?.site;
+      return site ? [`${site}_import_${safe}.aba2`, `${site}_import_${safe}.trend.bin`] : [];
+    }
+
+    async function cleanupStagedImport(job, index = job.current) {
+      for (const name of stagedImportFiles(job, index)) await deleteStoredReportFile(name);
+    }
+
+    async function cancelImport() {
+      if (importPreflight) {
+        const preparation = importPreflight;
+        importPreflight = null;
+        preparation.cancelled = true;
+        if (preparation.hashCancel) preparation.hashCancel(); else preparation.hashWorker?.terminate();
+      }
+      if (importJob) {
+        const job = importJob;
+        importJob = null;
+        restartParserWorker();
+        await cleanupStagedImport(job);
+      }
+      setImportBusy(false);
+      $('#parseProgress').classList.add('hidden');
+      $('#workspace').classList.toggle('hidden', catalog.length === 0);
+      setImportStatus('已取消当前导入；此前已完成的报告会保留。');
+      updateStorageStatus();
+    }
+
     async function startImport(files) {
+      if (importPreflight || importJob) { setImportStatus('已有导入任务正在进行，请等待完成或先取消。', true); return; }
       const selected = Array.from(files || []);
       if (!selected.length) { importError('请选择至少一份 CSV 报告文件。'); return; }
       if (selected.some((file) => !file.name.toLowerCase().endsWith('.csv'))) { importError('请只选择 CSV 文件。'); return; }
       const fallback = catalog.length ? ($('#marketplace').value || 'GB') : 'GB';
       const entries = selected.map((file) => ({ file, site: siteForFile(file, fallback) }));
       if (entries.some((entry) => !entry.site)) { importError('导入已取消：有文件未指定有效站点。'); return; }
+      const preparation = { token: createToken(), cancelled: false, hashWorker: null };
+      importPreflight = preparation;
+      setImportBusy(true);
       $('#uploadPanel').classList.remove('hidden');
       $('#parseProgress').classList.remove('hidden');
       $('#parseProgress').value = 0;
       setImportStatus('正在检查重复报告…');
-      const storedReports = (await getStoredReports()).filter((report) => report?.id);
+      const storedReports = await annotateIntegrity((await getStoredReports()).filter((report) => report?.id));
       const uniqueEntries = [];
-      const batchKeys = new Set();
+      const batchEntries = new Map();
       let skipped = 0;
       for (let index = 0; index < entries.length; index++) {
+        if (preparation.cancelled || importPreflight !== preparation) return;
         const entry = entries[index];
         setImportStatus(`正在检查第 ${index + 1}/${entries.length} 份：${entry.file.name}`);
         $('#parseProgress').value = Math.round(((index + 1) / entries.length) * 100);
-        entry.sourceFingerprint = await quickFingerprint(entry.file);
+        [entry.sourceFingerprint, entry.period] = await Promise.all([quickFingerprint(entry.file), sourcePeriod(entry.file)]);
         const batchKey = entry.sourceFingerprint
           ? `${entry.site}|${entry.file.size}|${entry.sourceFingerprint}`
           : `${entry.site}|${entry.file.name}|${entry.file.size}|${entry.file.lastModified}`;
-        if (batchKeys.has(batchKey) || matchesImportedReport(entry, storedReports)) {
+        const known = duplicateCandidates(entry, storedReports);
+        const sameBatch = batchEntries.get(batchKey) || [];
+        if (known.length || sameBatch.length) {
+          entry.fileHash = await fullFileHash(entry, index, entries.length, preparation);
+          if (preparation.cancelled || importPreflight !== preparation) return;
+          for (const previous of sameBatch) if (!previous.fileHash) previous.fileHash = await fullFileHash(previous, index, entries.length, preparation);
+        }
+        if (known.some((report) => report.fileHash && report.fileHash === entry.fileHash) || sameBatch.some((previous) => previous.fileHash === entry.fileHash)) {
           skipped++;
           continue;
         }
-        batchKeys.add(batchKey);
+        const sameWeek = entry.period ? storedReports.filter((report) => report.site === entry.site && report.endDate === entry.period.endDate) : [];
+        if (sameWeek.length) {
+          if (!window.confirm(`${entry.site} 站 ${entry.period.label} 已有不同版本。\n\n点击“确定”替换旧版本，点击“取消”跳过这份文件。`)) { skipped++; continue; }
+          entry.replaceConfirmed = true;
+        }
+        if (!batchEntries.has(batchKey)) batchEntries.set(batchKey, []);
+        batchEntries.get(batchKey).push(entry);
         uniqueEntries.push(entry);
       }
       if (!uniqueEntries.length) {
+        importPreflight = null;
+        setImportBusy(false);
         $('#parseProgress').classList.add('hidden');
         $('#workspace').classList.toggle('hidden', catalog.length === 0);
         const message = `已跳过 ${skipped} 份已导入报告，无需重复导入。`;
@@ -1027,7 +1009,8 @@
       $('#workspace').classList.add('hidden');
       $('#parseProgress').value = 0;
       setImportStatus(skipped ? `重复检测完成：跳过 ${skipped} 份，正在准备导入 ${uniqueEntries.length} 份新报告…` : '正在准备导入…');
-      importJob = { token: createToken(), files: uniqueEntries, mode, current: 0, imported: [], addedCount: 0, skipped };
+      importPreflight = null;
+      importJob = { token: createToken(), files: uniqueEntries, mode, current: 0, imported: [], addedCount: 0, skipped, failed: [] };
       parseNextFile();
     }
 
@@ -1041,6 +1024,7 @@
 
     async function acceptImportedReport(data) {
       const job = importJob;
+      if (!job) { await deleteStoredReportFile(data.storageFile); await deleteStoredReportFile(data.trendFile); return; }
       const entry = job.files[data.index];
       const meta = {
         id: `${entry.site}|${data.period.endDate}|${data.fileHash}`,
@@ -1062,28 +1046,33 @@
         importedAt: new Date().toISOString()
       };
       const duplicate = catalog.find((report) => report.id === meta.id);
-      if (duplicate) {
+      if (duplicate && duplicate._integrity === 'ok') {
         await deleteStoredReportFile(meta.storageFile);
         await deleteStoredReportFile(meta.trendFile);
         job.imported.push(duplicate);
         job.skipped++;
       } else {
         const sameWeek = catalog.filter((report) => report.site === meta.site && report.endDate === meta.endDate);
-        if (sameWeek.length && !window.confirm(`${meta.site} 站 ${meta.label} 已有不同版本。\n\n点击“确定”替换旧版本，点击“取消”保留旧版本。`)) {
+        if (sameWeek.length && !entry.replaceConfirmed && !window.confirm(`${meta.site} 站 ${meta.label} 已有不同版本。\n\n点击“确定”替换旧版本，点击“取消”保留旧版本。`)) {
           await deleteStoredReportFile(meta.storageFile);
           await deleteStoredReportFile(meta.trendFile);
           job.skipped++;
         } else {
           await putStoredReport(meta);
+          const cleanupWarnings = [];
           for (const oldReport of sameWeek) {
-            await deleteStoredReportMeta(oldReport.id);
-            await deleteStoredReportFile(oldReport.storageFile);
-            await deleteStoredReportFile(oldReport.trendFile);
+            if (oldReport.id !== meta.id) {
+              try { await deleteStoredReportMeta(oldReport.id); } catch (error) { cleanupWarnings.push(`${oldReport.label}旧目录：${error.message || error}`); }
+            }
+            for (const name of [oldReport.storageFile, oldReport.trendFile].filter(Boolean)) {
+              try { await deleteStoredReportFile(name); } catch (error) { cleanupWarnings.push(`${name}：${error.message || error}`); }
+            }
           }
           catalog = catalog.filter((report) => !sameWeek.some((oldReport) => oldReport.id === report.id));
-          catalog.push(meta);
+          catalog.push({ ...meta, _integrity: 'ok' });
           job.imported.push(meta);
           job.addedCount++;
+          if (cleanupWarnings.length) job.failed.push(`${entry.file.name}已导入，但旧版本清理不完整：${cleanupWarnings.join('；')}`);
         }
       }
       job.current++;
@@ -1094,15 +1083,28 @@
     async function finishImport(job) {
       if (importJob !== job) return;
       importJob = null;
+      setImportBusy(false);
       $('#parseProgress').classList.add('hidden');
       const imported = [...job.imported].sort(newestFirst);
       const suffix = job.skipped ? `，跳过 ${job.skipped} 份` : '';
-      setImportStatus(`导入完成：${job.addedCount} 份新报告${suffix}`);
+      const failedSuffix = job.failed.length ? `，失败 ${job.failed.length} 份` : '';
+      setImportStatus(`导入完成：${job.addedCount} 份新报告${suffix}${failedSuffix}`, job.failed.length > 0);
       let primaryId = null, compareId = null;
       if (job.mode === 'single') primaryId = imported[0]?.id || null;
       if (job.mode === 'compare' && imported.length === 2) { primaryId = imported[0].id; compareId = imported[1].id; }
       if (job.mode !== 'compare') $('#compareReport').value = '';
       await refreshCatalog({ primaryId, compareId });
+      if (job.failed.length) window.alert(`以下文件处理失败，其他文件已继续导入：\n\n${job.failed.slice(0, 12).join('\n')}`);
+    }
+
+    async function failCurrentImport(message) {
+      const job = importJob;
+      if (!job) return;
+      const entry = job.files[job.current];
+      try { await cleanupStagedImport(job); } catch {}
+      job.failed.push(`${entry.file.name}：${message}`);
+      job.current++;
+      if (job.current < job.files.length) parseNextFile(); else await finishImport(job);
     }
 
     function fillSelect(select, reports, selectedValue, includeNone = false) {
@@ -1122,7 +1124,7 @@
       const visible = reports.filter((report) => report.endDate >= start && report.endDate <= end).sort(newestFirst);
       fillSelect($('#currentReport'), visible, primaryId || $('#currentReport').value);
       const primary = catalog.find((report) => report.id === $('#currentReport').value);
-      const older = primary ? visible.filter((report) => report.endDate < primary.endDate) : [];
+      const older = primary ? visible.filter((report) => report._integrity === 'ok' && report.endDate < primary.endDate) : [];
       fillSelect($('#compareReport'), older, compareId || $('#compareReport').value, true);
     }
 
@@ -1142,7 +1144,7 @@
     }
 
     async function refreshCatalog(options = {}) {
-      catalog = (await getStoredReports()).filter((report) => report?.id && report?.storageFile && MARKETPLACES[report.site]).sort(newestFirst);
+      catalog = (await annotateIntegrity((await getStoredReports()).filter((report) => report?.id && report?.storageFile && MARKETPLACES[report.site]))).sort(newestFirst);
       await updateStorageStatus();
       if (!catalog.length) {
         state.records = []; state.filtered = []; state.totalFiltered = 0; state.paged = false;
@@ -1151,7 +1153,7 @@
         if (!$('#parseStatus').textContent) setImportStatus('报告仅保存在当前浏览器本地，可一次选择多份 CSV。');
         return;
       }
-      const fallback = catalog[0];
+      const fallback = catalog.find((report) => report._integrity === 'ok') || catalog[0];
       const siteFallback = options.site ? catalog.find((report) => report.site === options.site) : null;
       rebuildSiteView({ primaryId: options.primaryId || siteFallback?.id || fallback.id, compareId: options.compareId || null, site: options.site });
       await loadSelectedReports();
@@ -1161,24 +1163,36 @@
       const primary = catalog.find((report) => report.id === $('#currentReport').value);
       const comparison = catalog.find((report) => report.id === $('#compareReport').value);
       if (!primary) return;
+      if (primary._integrity !== 'ok') {
+        state.records = []; state.filtered = []; state.totalFiltered = 0;
+        $('#workspace').classList.remove('hidden'); $('#workspace').removeAttribute('aria-busy');
+        $('#dataRows').innerHTML = ''; $('#pagination').classList.add('hidden');
+        $('#empty').textContent = '当前报告的本地分析数据缺失或损坏，请重新导入原 CSV 修复。'; $('#empty').classList.remove('hidden');
+        $('#fileSummary').innerHTML = `<strong>⚠ ${escapeHtml(primary.label)}</strong> · 需要修复`;
+        return;
+      }
+      if (comparison?._integrity !== 'ok') { $('#compareReport').value = ''; }
+      const activeComparison = comparison?._integrity === 'ok' ? comparison : null;
       if (trendJob) { trendJob = null; restartTrendWorker(); }
       if (queryJob) { queryJob = null; restartQueryWorker(); }
       if (Number(primary.storageVersion || 1) >= 2) {
         loadJob = null;
-        state.paged = true; state.newPeriod = primary; state.oldPeriod = comparison || null;
-        state.mode = comparison ? 'compare' : 'single'; state.fileName = primary.fileName;
+        state.paged = true; state.newPeriod = primary; state.oldPeriod = activeComparison;
+        state.mode = activeComparison ? 'compare' : 'single'; state.fileName = primary.fileName;
+        if (!activeComparison) state.sorts = state.sorts.filter((sort) => sort.key === 'newRank');
         state.records = []; state.filtered = []; state.totalFiltered = Number(primary.rowCount || 0);
         state.page = 1; state.pageBeforeFilter = 1; state.filtering = false;
         $('#workspace').classList.remove('hidden'); $('#workspace').setAttribute('aria-busy', 'true');
         $('#uploadPanel').classList.add('hidden'); $('#dataRows').innerHTML = '';
         $('#empty').classList.remove('hidden'); $('#empty').textContent = '正在从本地存储加载当前页…';
         $('#pagination').classList.add('hidden');
-        $('#fileSummary').innerHTML = comparison ? `<strong>${escapeHtml(primary.label)}</strong> 对比 ${escapeHtml(comparison.label)} · ${MARKETPLACES[primary.site].name}` : `<strong>${escapeHtml(primary.fileName)}</strong> · ${escapeHtml(primary.label)}`;
+        $('#fileSummary').innerHTML = activeComparison ? `<strong>${escapeHtml(primary.label)}</strong> 对比 ${escapeHtml(activeComparison.label)} · ${MARKETPLACES[primary.site].name}` : `<strong>${escapeHtml(primary.fileName)}</strong> · ${escapeHtml(primary.label)}`;
         updateReportHeader(); requestPagedData();
         return;
       }
       state.paged = false;
-      loadJob = { token: createToken(), reports: comparison ? [primary, comparison] : [primary], results: [], current: 0 };
+      if (!activeComparison) state.sorts = state.sorts.filter((sort) => sort.key === 'newRank');
+      loadJob = { token: createToken(), reports: activeComparison ? [primary, activeComparison] : [primary], results: [], current: 0 };
       state.records = []; state.filtered = []; state.page = 1; state.pageBeforeFilter = 1; state.filtering = false;
       $('#workspace').classList.remove('hidden');
       $('#workspace').setAttribute('aria-busy', 'true');
@@ -1232,7 +1246,9 @@
         return;
       }
       if (data.type === 'trend-migration-progress' || data.type === 'trend-index-progress') {
-        $('#storageStatus').textContent = `建立趋势索引 ${data.reportIndex + 1}/${data.reportTotal} · ${data.count.toLocaleString()} / ${data.totalRecords.toLocaleString()} 条`;
+        const position = Number.isFinite(data.reportIndex) ? `${data.reportIndex + 1}/${data.reportTotal} · ` : '';
+        const total = Number.isFinite(data.totalRecords) ? ` / ${data.totalRecords.toLocaleString()}` : '';
+        $('#storageStatus').textContent = `建立趋势索引 ${position}${Number(data.count || 0).toLocaleString()}${total} 条`;
         return;
       }
       if (data.type === 'trend-progress') {
@@ -1295,14 +1311,14 @@
       renderPage(job.scrollToTop); updateStorageStatus();
     }
 
-    parser.onmessage = async ({ data }) => {
+    async function handleParserMessage({ data }) {
       if (importJob && data.token === importJob.token) {
         if (data.type === 'progress') { setImportStatus(`正在解析第 ${data.index + 1}/${data.total} 份：${importJob.files[data.index].file.name} · ${data.count.toLocaleString()} 条`); $('#parseProgress').value = Math.round(data.percent * 0.85); return; }
         if (data.type === 'index-stage') { setImportStatus(`正在建立第 ${importJob.current + 1}/${importJob.files.length} 份趋势索引 · ${data.stage}/${data.totalStages}`); $('#parseProgress').value = 85 + Math.round((data.stage / data.totalStages) * 15); return; }
         if (data.type === 'storage-progress') { setImportStatus(`正在压缩保存第 ${importJob.current + 1}/${importJob.files.length} 份 · ${data.count.toLocaleString()} / ${data.totalRecords.toLocaleString()} 条`); $('#parseProgress').value = Math.round((data.count / data.totalRecords) * 100); return; }
         if (data.type === 'index-progress') { setImportStatus(`正在建立第 ${importJob.current + 1}/${importJob.files.length} 份趋势索引 · ${data.count.toLocaleString()} / ${data.totalRecords.toLocaleString()} 条`); $('#parseProgress').value = Math.round((data.count / data.totalRecords) * 100); return; }
-        if (data.type === 'error') { importError(`第 ${data.index + 1} 份文件处理失败：${data.message}`); return; }
-        if (data.type === 'complete') { try { await acceptImportedReport(data); } catch (error) { importError(`保存报告失败：${error.message || error}`); } }
+        if (data.type === 'error') { await failCurrentImport(data.message); return; }
+        if (data.type === 'complete') { try { await acceptImportedReport(data); } catch (error) { await failCurrentImport(`保存报告失败：${error.message || error}`); } }
         return;
       }
       if (loadJob && data.token === loadJob.token) {
@@ -1315,11 +1331,55 @@
           if (job.current < job.reports.length) sendNextLoad(); else finishLoad(job);
         }
       }
-    };
-    trendParser.onmessage = handleTrendMessage;
-    queryParser.onmessage = handleQueryMessage;
+    }
+
+    function bindParserWorker() {
+      parser.onmessage = handleParserMessage;
+      parser.onerror = (event) => {
+        const message = event.message || '导入Worker异常退出。';
+        if (importJob) {
+          const job = importJob;
+          restartParserWorker();
+          failCurrentImport(message).catch((error) => importError(`恢复导入失败：${error.message || error}`));
+        } else if (loadJob) {
+          loadJob = null;
+          $('#workspace').removeAttribute('aria-busy');
+          $('#empty').textContent = `加载失败：${message}`; $('#empty').classList.remove('hidden');
+          restartParserWorker();
+        }
+      };
+      parser.onmessageerror = () => parser.onerror({ message: '导入Worker返回了无法读取的数据。' });
+    }
+
+    function bindTrendWorker() {
+      trendParser.onmessage = handleTrendMessage;
+      trendParser.onerror = (event) => {
+        const job = trendJob;
+        trendJob = null;
+        if (job) $$('.trend-cell').forEach((cell) => { if (!trendCache.has(trendKey(job.rangeKey, cell.dataset.trendKey))) cell.innerHTML = '<span class="trend-placeholder">趋势Worker异常，可切换页面重试</span>'; });
+        $('#storageStatus').textContent = `趋势读取失败：${event.message || 'Worker异常退出'}`;
+        restartTrendWorker();
+      };
+      trendParser.onmessageerror = () => trendParser.onerror({ message: '趋势Worker返回了无法读取的数据。' });
+    }
+
+    function bindQueryWorker() {
+      queryParser.onmessage = handleQueryMessage;
+      queryParser.onerror = (event) => {
+        queryJob = null;
+        $('#workspace').removeAttribute('aria-busy');
+        $('#empty').textContent = `读取失败：${event.message || '查询Worker异常退出'}`; $('#empty').classList.remove('hidden');
+        restartQueryWorker();
+      };
+      queryParser.onmessageerror = () => queryParser.onerror({ message: '查询Worker返回了无法读取的数据。' });
+    }
+
+    bindParserWorker();
+    bindTrendWorker();
+    bindQueryWorker();
 
     $('#importInput').addEventListener('change', (event) => { startImport(event.target.files).catch((error) => importError(`导入准备失败：${error.message || error}`)); event.target.value = ''; });
+    $('#cancelImport').addEventListener('click', () => cancelImport().catch((error) => importError(`取消导入失败：${error.message || error}`)));
     FILTER_IDS.forEach((id) => $('#' + id).addEventListener('input', scheduleFilter));
     $('#resetFilters').addEventListener('click', () => { window.clearTimeout(state.filterTimer); FILTER_IDS.forEach((id) => { $('#' + id).value = ''; }); applyFilters(); });
     $('#marketplace').addEventListener('change', () => { rebuildSiteView({ site: $('#marketplace').value }); loadSelectedReports(); });
@@ -1332,6 +1392,8 @@
     $('#storageSelectAll').addEventListener('change', (event) => { $$('.storage-select').forEach((checkbox) => { checkbox.checked = event.currentTarget.checked; }); updateStoredSelectionState(); });
     $('#storageFiles').addEventListener('change', (event) => { if (event.target.matches('.storage-select')) updateStoredSelectionState(); });
     $('#deleteSelectedReports').addEventListener('click', () => deleteSelectedStoredReports().catch((error) => { $('#storageModalStatus').className = 'status error'; $('#storageModalStatus').textContent = `删除失败：${error.message || error}`; }));
+    $('#cleanupOrphans').addEventListener('click', () => cleanupOrphanFiles().catch((error) => { $('#storageModalStatus').className = 'status error'; $('#storageModalStatus').textContent = `清理失败：${error.message || error}`; }));
+    $('#restoreStorage').addEventListener('click', restoreStoredData);
     $('#exportStorage').addEventListener('click', exportStoredData);
     $('#closeStorageModal').addEventListener('click', closeStorageModal);
     $('#closeStorageButton').addEventListener('click', closeStorageModal);
