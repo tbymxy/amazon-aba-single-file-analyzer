@@ -134,7 +134,7 @@
     <header class="topbar">
       <div class="logo">ABA</div>
       <h1>热门搜索词分析器</h1>
-      <span class="local-badge">本地持久化 · 1.8.0</span>
+      <span class="local-badge">本地持久化 · 1.8.1</span>
     </header>
     <input id="importInput" class="file-input" type="file" accept=".csv,text/csv" multiple />
     <section id="uploadPanel" class="upload-panel">
@@ -949,24 +949,85 @@
       return answer ? ALIASES[answer.trim().toUpperCase()] || null : null;
     }
 
-    function startImport(files) {
+    async function quickFingerprint(file) {
+      if (!crypto.subtle) return null;
+      const sampleSize = 1024 * 1024;
+      let sample;
+      if (file.size <= sampleSize * 2) {
+        sample = new Uint8Array(await file.arrayBuffer());
+      } else {
+        const [head, tail] = await Promise.all([
+          file.slice(0, sampleSize).arrayBuffer(),
+          file.slice(file.size - sampleSize).arrayBuffer()
+        ]);
+        const sizeBytes = new TextEncoder().encode(String(file.size));
+        sample = new Uint8Array(head.byteLength + tail.byteLength + sizeBytes.byteLength + 2);
+        sample.set(new Uint8Array(head), 0);
+        sample[head.byteLength] = 0;
+        sample.set(sizeBytes, head.byteLength + 1);
+        sample[head.byteLength + 1 + sizeBytes.byteLength] = 0;
+        sample.set(new Uint8Array(tail), head.byteLength + sizeBytes.byteLength + 2);
+      }
+      const digest = await crypto.subtle.digest('SHA-256', sample);
+      return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+    }
+
+    function matchesImportedReport(entry, reports) {
+      return reports.some((report) => {
+        if (report.site !== entry.site || Number(report.sourceSize) !== entry.file.size) return false;
+        if (entry.sourceFingerprint && report.sourceFingerprint) return report.sourceFingerprint === entry.sourceFingerprint;
+        return !report.sourceFingerprint && report.fileName === entry.file.name;
+      });
+    }
+
+    async function startImport(files) {
       const selected = Array.from(files || []);
       if (!selected.length) { importError('请选择至少一份 CSV 报告文件。'); return; }
       if (selected.some((file) => !file.name.toLowerCase().endsWith('.csv'))) { importError('请只选择 CSV 文件。'); return; }
       const fallback = catalog.length ? ($('#marketplace').value || 'GB') : 'GB';
       const entries = selected.map((file) => ({ file, site: siteForFile(file, fallback) }));
       if (entries.some((entry) => !entry.site)) { importError('导入已取消：有文件未指定有效站点。'); return; }
-      const mode = entries.length === 1 ? 'single' : entries.length === 2 && entries[0].site === entries[1].site ? 'compare' : 'batch';
+      $('#uploadPanel').classList.remove('hidden');
+      $('#parseProgress').classList.remove('hidden');
+      $('#parseProgress').value = 0;
+      setImportStatus('正在检查重复报告…');
+      const storedReports = (await getStoredReports()).filter((report) => report?.id);
+      const uniqueEntries = [];
+      const batchKeys = new Set();
+      let skipped = 0;
+      for (let index = 0; index < entries.length; index++) {
+        const entry = entries[index];
+        setImportStatus(`正在检查第 ${index + 1}/${entries.length} 份：${entry.file.name}`);
+        $('#parseProgress').value = Math.round(((index + 1) / entries.length) * 100);
+        entry.sourceFingerprint = await quickFingerprint(entry.file);
+        const batchKey = entry.sourceFingerprint
+          ? `${entry.site}|${entry.file.size}|${entry.sourceFingerprint}`
+          : `${entry.site}|${entry.file.name}|${entry.file.size}|${entry.file.lastModified}`;
+        if (batchKeys.has(batchKey) || matchesImportedReport(entry, storedReports)) {
+          skipped++;
+          continue;
+        }
+        batchKeys.add(batchKey);
+        uniqueEntries.push(entry);
+      }
+      if (!uniqueEntries.length) {
+        $('#parseProgress').classList.add('hidden');
+        $('#workspace').classList.toggle('hidden', catalog.length === 0);
+        const message = `已跳过 ${skipped} 份已导入报告，无需重复导入。`;
+        setImportStatus(message);
+        await updateStorageStatus();
+        if (catalog.length) $('#storageStatus').textContent = message;
+        return;
+      }
+      const mode = uniqueEntries.length === 1 ? 'single' : uniqueEntries.length === 2 && uniqueEntries[0].site === uniqueEntries[1].site ? 'compare' : 'batch';
       loadJob = null;
       if (queryJob) { queryJob = null; restartQueryWorker(); }
       if (trendJob) { trendJob = null; restartTrendWorker(); }
       requestPersistentStorage().then(updateStorageStatus);
-      $('#uploadPanel').classList.remove('hidden');
       $('#workspace').classList.add('hidden');
       $('#parseProgress').value = 0;
-      $('#parseProgress').classList.remove('hidden');
-      setImportStatus('正在准备导入…');
-      importJob = { token: createToken(), files: entries, mode, current: 0, imported: [], skipped: 0 };
+      setImportStatus(skipped ? `重复检测完成：跳过 ${skipped} 份，正在准备导入 ${uniqueEntries.length} 份新报告…` : '正在准备导入…');
+      importJob = { token: createToken(), files: uniqueEntries, mode, current: 0, imported: [], addedCount: 0, skipped };
       parseNextFile();
     }
 
@@ -996,6 +1057,8 @@
         storageVersion: Number(data.storageVersion || 1),
         rowCount: data.rowCount,
         sourceSize: entry.file.size,
+        sourceFingerprint: entry.sourceFingerprint,
+        sourceLastModified: entry.file.lastModified,
         importedAt: new Date().toISOString()
       };
       const duplicate = catalog.find((report) => report.id === meta.id);
@@ -1020,6 +1083,7 @@
           catalog = catalog.filter((report) => !sameWeek.some((oldReport) => oldReport.id === report.id));
           catalog.push(meta);
           job.imported.push(meta);
+          job.addedCount++;
         }
       }
       job.current++;
@@ -1033,7 +1097,7 @@
       $('#parseProgress').classList.add('hidden');
       const imported = [...job.imported].sort(newestFirst);
       const suffix = job.skipped ? `，跳过 ${job.skipped} 份` : '';
-      setImportStatus(`导入完成：${imported.length} 份可用报告${suffix}`);
+      setImportStatus(`导入完成：${job.addedCount} 份新报告${suffix}`);
       let primaryId = null, compareId = null;
       if (job.mode === 'single') primaryId = imported[0]?.id || null;
       if (job.mode === 'compare' && imported.length === 2) { primaryId = imported[0].id; compareId = imported[1].id; }
@@ -1255,7 +1319,7 @@
     trendParser.onmessage = handleTrendMessage;
     queryParser.onmessage = handleQueryMessage;
 
-    $('#importInput').addEventListener('change', (event) => { startImport(event.target.files); event.target.value = ''; });
+    $('#importInput').addEventListener('change', (event) => { startImport(event.target.files).catch((error) => importError(`导入准备失败：${error.message || error}`)); event.target.value = ''; });
     FILTER_IDS.forEach((id) => $('#' + id).addEventListener('input', scheduleFilter));
     $('#resetFilters').addEventListener('click', () => { window.clearTimeout(state.filterTimer); FILTER_IDS.forEach((id) => { $('#' + id).value = ''; }); applyFilters(); });
     $('#marketplace').addEventListener('change', () => { rebuildSiteView({ site: $('#marketplace').value }); loadSelectedReports(); });
@@ -1290,7 +1354,7 @@
     const uploadPanel = $('#uploadPanel');
     ['dragenter', 'dragover'].forEach((name) => uploadPanel.addEventListener(name, (event) => { event.preventDefault(); uploadPanel.classList.add('dragging'); }));
     ['dragleave', 'drop'].forEach((name) => uploadPanel.addEventListener(name, (event) => { event.preventDefault(); uploadPanel.classList.remove('dragging'); }));
-    uploadPanel.addEventListener('drop', (event) => startImport(event.dataTransfer.files));
+    uploadPanel.addEventListener('drop', (event) => startImport(event.dataTransfer.files).catch((error) => importError(`导入准备失败：${error.message || error}`)));
 
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('./sw.js').catch(() => {});
     refreshCatalog().catch((error) => importError(`无法读取本地报告库：${error.message || error}`));
