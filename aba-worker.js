@@ -6,7 +6,16 @@ const MAX_TREND_BUFFERS = 2;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8');
 const normalize = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
-const asNumber = (value) => Number(String(value || '').replaceAll('%', '').replaceAll(',', '').trim()) || 0;
+const legacyNumber = (value) => Number(String(value || '').replaceAll('%', '').replaceAll(',', '').trim()) || 0;
+const asNumber = (value) => {
+  if (typeof value === 'number') return value || 0;
+  if (typeof value !== 'string') return legacyNumber(value);
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    if (code === 37 || code === 44) return legacyNumber(value);
+  }
+  return Number(value) || 0;
+};
 const hashPair = (value) => {
   let first = 2166136261, second = 5381;
   for (let index = 0; index < value.length; index++) {
