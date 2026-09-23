@@ -134,7 +134,7 @@
     <header class="topbar">
       <div class="logo">ABA</div>
       <h1>热门搜索词分析器</h1>
-      <span class="local-badge">本地持久化 · 1.7.0</span>
+      <span class="local-badge">本地持久化 · 1.8.0</span>
     </header>
     <input id="importInput" class="file-input" type="file" accept=".csv,text/csv" multiple />
     <section id="uploadPanel" class="upload-panel">
@@ -211,7 +211,7 @@
       JP: { name: '日本', domain: 'www.amazon.co.jp', geo: 'JP' }, AU: { name: '澳大利亚', domain: 'www.amazon.com.au', geo: 'AU' }
     };
     const ALIASES = { UK: 'GB', US: 'US', CA: 'CA', MX: 'MX', GB: 'GB', DE: 'DE', FR: 'FR', IT: 'IT', ES: 'ES', JP: 'JP', AU: 'AU' };
-    const state = { records: [], filtered: [], fileName: '', mode: 'single', newPeriod: null, oldPeriod: null, sorts: [], page: 1, pageBeforeFilter: 1, filtering: false, filterTimer: 0 };
+    const state = { records: [], filtered: [], totalFiltered: 0, paged: false, fileName: '', mode: 'single', newPeriod: null, oldPeriod: null, sorts: [], page: 1, pageBeforeFilter: 1, filtering: false, filterTimer: 0 };
     const FILTER_IDS = ['keyword', 'rankMin', 'rankMax', 'clickMax', 'conversionMax', 'changeMin', 'changeMax'];
     const $ = (selector) => document.querySelector(selector);
     const $$ = (selector) => document.querySelectorAll(selector);
@@ -230,6 +230,7 @@
     let databasePromise = null;
     let catalog = [];
     let loadJob = null;
+    let queryJob = null;
     let trendJob = null;
     let trendRangeKey = '';
     let openTrend = null;
@@ -372,6 +373,7 @@
       const idSet = new Set(ids);
       if (trendJob?.reports?.some((report) => idSet.has(report.id))) { trendJob = null; restartTrendWorker(); }
       if (loadJob?.reports?.some((report) => idSet.has(report.id))) loadJob = null;
+      if (queryJob) { queryJob = null; restartQueryWorker(); }
       closeTrendModal();
       trendCache.clear();
       $('#deleteSelectedReports').disabled = true;
@@ -415,7 +417,7 @@
         const manifest = await (await destination.getFileHandle('reports.json', { create: true })).createWritable();
         await manifest.write(new TextEncoder().encode(JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), reports: catalog }, null, 2))); await manifest.close();
         const readme = await (await destination.getFileHandle('说明.txt', { create: true })).createWritable();
-        await readme.write(new TextEncoder().encode('Amazon ABA 本地持久化数据备份\r\n\r\n*.jsonl.gz 为压缩分析数据，*.trend.bin 为排名趋势索引，reports.json 为报告目录。\r\n请保留原始 CSV；此备份主要用于查看和防止浏览器数据丢失。\r\n')); await readme.close();
+        await readme.write(new TextEncoder().encode('Amazon ABA 本地持久化数据备份\r\n\r\n*.aba2 为流式二进制分析数据，*.jsonl.gz 为旧版压缩分析数据，*.trend.bin 为排名趋势索引，reports.json 为报告目录。\r\n请保留原始 CSV；此备份主要用于查看和防止浏览器数据丢失。\r\n')); await readme.close();
         $('#storageModalStatus').className = 'status';
         $('#storageModalStatus').textContent = `已导出 ${copied} 个数据文件到“${selected.name}\\Amazon-ABA-本地数据”，可在 Windows 资源管理器中查看。`;
       } catch (error) {
@@ -646,9 +648,10 @@
         } catch (error) { self.postMessage({ type: action === 'trend' ? 'trend-error' : 'error', token, index, total, message: error instanceof Error ? error.message : 'CSV 解析失败。' }); }
       };
     `;
-    const workerUrl = URL.createObjectURL(new Blob([workerCode], { type: 'text/javascript' }));
+    const workerUrl = './aba-worker.js';
     const parser = new Worker(workerUrl);
     let trendParser = new Worker(workerUrl);
+    let queryParser = new Worker(workerUrl);
 
     function recordCells(row) {
       if (!row) return '<div></div><div class="compare-column"></div><div class="compare-column"></div><div></div><div></div><div></div><div></div>';
@@ -732,6 +735,37 @@
       trendParser.onmessage = handleTrendMessage;
     }
 
+    function restartQueryWorker() {
+      queryParser.terminate();
+      queryParser = new Worker(workerUrl);
+      queryParser.onmessage = handleQueryMessage;
+    }
+
+    function filterSnapshot() {
+      return {
+        keyword: $('#keyword').value.trim().toLocaleLowerCase().replace(/\s+/g, ' '),
+        rankMin: numberOrNull($('#rankMin').value), rankMax: numberOrNull($('#rankMax').value),
+        clickMax: numberOrNull($('#clickMax').value), conversionMax: numberOrNull($('#conversionMax').value),
+        changeMin: state.mode === 'compare' ? numberOrNull($('#changeMin').value) : null,
+        changeMax: state.mode === 'compare' ? numberOrNull($('#changeMax').value) : null
+      };
+    }
+
+    function requestPagedData(scrollToTop = false) {
+      if (!state.paged || !state.newPeriod) return;
+      if (queryJob) restartQueryWorker();
+      const filters = filterSnapshot();
+      const hasFilters = Boolean(filters.keyword) || ['rankMin', 'rankMax', 'clickMax', 'conversionMax', 'changeMin', 'changeMax'].some((key) => filters[key] != null);
+      if (hasFilters && !state.filtering) state.pageBeforeFilter = state.page;
+      state.filtering = hasFilters;
+      const token = createToken();
+      const queryKey = JSON.stringify({ primary: state.newPeriod.id, comparison: state.oldPeriod?.id || '', filters, sorts: state.sorts });
+      queryJob = { token, scrollToTop };
+      $('#workspace').setAttribute('aria-busy', 'true');
+      $('#storageStatus').textContent = hasFilters || state.sorts.length ? '正在扫描本地索引并筛选…' : '正在读取当前页…';
+      queryParser.postMessage({ action: 'query-page', token, primary: state.newPeriod, comparison: state.oldPeriod, filters, sorts: state.sorts, page: state.page, pageSize: RECORDS_PER_PAGE, queryKey });
+    }
+
     function requestVisibleTrends() {
       const cells = Array.from($$('.trend-cell'));
       if (!cells.length || !state.records.length) return;
@@ -807,11 +841,11 @@
       if (position < 0) state.sorts.push({ key, direction: 'asc' });
       else if (state.sorts[position].direction === 'asc') state.sorts[position].direction = 'desc';
       else state.sorts.splice(position, 1);
-      state.filtered = sortRows(state.filtered, true);
       state.page = 1;
       if (!state.filtering) state.pageBeforeFilter = 1;
       updateSortIndicators();
-      renderPage(true);
+      if (state.paged) requestPagedData(true);
+      else { state.filtered = sortRows(state.filtered, true); renderPage(true); }
     }
 
     function pageButton(page, current) {
@@ -819,7 +853,8 @@
     }
 
     function renderPagination(totalPages) {
-      if (!state.filtered.length) { $('#pagination').classList.add('hidden'); return; }
+      const totalCount = state.paged ? state.totalFiltered : state.filtered.length;
+      if (!totalCount) { $('#pagination').classList.add('hidden'); return; }
       $('#pagination').classList.remove('hidden');
       let start = Math.max(1, state.page - Math.floor(PAGE_WINDOW / 2));
       let end = Math.min(totalPages, start + PAGE_WINDOW - 1);
@@ -837,30 +872,41 @@
     }
 
     function renderPage(scrollToTop = false) {
-      const totalPages = Math.max(1, Math.ceil(state.filtered.length / RECORDS_PER_PAGE));
+      const totalCount = state.paged ? state.totalFiltered : state.filtered.length;
+      const totalPages = Math.max(1, Math.ceil(totalCount / RECORDS_PER_PAGE));
       state.page = Math.min(totalPages, Math.max(1, state.page));
-      const start = (state.page - 1) * RECORDS_PER_PAGE;
+      const start = state.paged ? 0 : (state.page - 1) * RECORDS_PER_PAGE;
       const left = state.filtered.slice(start, start + ROWS_PER_PAGE);
       const right = state.filtered.slice(start + ROWS_PER_PAGE, start + RECORDS_PER_PAGE);
       const rowCount = Math.max(left.length, right.length);
       $('#dataRows').innerHTML = Array.from({ length: rowCount }, (_, index) => `<div class="data-row" role="row">${recordCells(left[index])}<div class="column-divider" aria-hidden="true"></div>${recordCells(right[index])}</div>`).join('');
       $('#empty').classList.toggle('hidden', state.filtered.length > 0);
-      $('#resultSummary').innerHTML = `<strong>${state.filtered.length.toLocaleString()}</strong> 条 · 第 <strong>${state.page.toLocaleString()}</strong> / ${totalPages.toLocaleString()} 页 · 每页左右各100条${state.mode === 'compare' ? ' · 涨跌=旧排名−新排名' : ''}`;
+      $('#resultSummary').innerHTML = `<strong>${totalCount.toLocaleString()}</strong> 条 · 第 <strong>${state.page.toLocaleString()}</strong> / ${totalPages.toLocaleString()} 页 · 每页左右各100条${state.mode === 'compare' ? ' · 涨跌=旧排名−新排名' : ''}`;
       renderPagination(totalPages);
       requestAnimationFrame(requestVisibleTrends);
       if (scrollToTop) $('.grid').scrollIntoView({ block: 'start' });
     }
 
     function goToPage(page) {
-      const totalPages = Math.max(1, Math.ceil(state.filtered.length / RECORDS_PER_PAGE));
+      const totalCount = state.paged ? state.totalFiltered : state.filtered.length;
+      const totalPages = Math.max(1, Math.ceil(totalCount / RECORDS_PER_PAGE));
       if (!Number.isFinite(page)) return;
       state.page = Math.min(totalPages, Math.max(1, Math.trunc(page)));
       if (!state.filtering) state.pageBeforeFilter = state.page;
       $('#pageInput').value = '';
-      renderPage(true);
+      if (state.paged) requestPagedData(true); else renderPage(true);
     }
 
     function applyFilters() {
+      if (state.paged) {
+        const filters = filterSnapshot();
+        const hasFilters = Boolean(filters.keyword) || ['rankMin', 'rankMax', 'clickMax', 'conversionMax', 'changeMin', 'changeMax'].some((key) => filters[key] != null);
+        if (hasFilters && !state.filtering) state.pageBeforeFilter = state.page;
+        state.page = hasFilters ? 1 : (state.filtering ? state.pageBeforeFilter : state.page);
+        state.filtering = hasFilters;
+        requestPagedData();
+        return;
+      }
       const keyword = $('#keyword').value.trim().toLocaleLowerCase().replace(/\s+/g, ' ');
       const rankMin = numberOrNull($('#rankMin').value), rankMax = numberOrNull($('#rankMax').value);
       const clickMax = numberOrNull($('#clickMax').value), conversionMax = numberOrNull($('#conversionMax').value);
@@ -873,7 +919,7 @@
       state.filtering = hasFilters;
       renderPage();
     }
-    function scheduleFilter() { window.clearTimeout(state.filterTimer); state.filterTimer = window.setTimeout(applyFilters, 160); }
+    function scheduleFilter() { window.clearTimeout(state.filterTimer); state.filterTimer = window.setTimeout(applyFilters, state.paged ? 450 : 160); }
 
     let importJob = null;
     const createToken = () => crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
@@ -912,6 +958,7 @@
       if (entries.some((entry) => !entry.site)) { importError('导入已取消：有文件未指定有效站点。'); return; }
       const mode = entries.length === 1 ? 'single' : entries.length === 2 && entries[0].site === entries[1].site ? 'compare' : 'batch';
       loadJob = null;
+      if (queryJob) { queryJob = null; restartQueryWorker(); }
       if (trendJob) { trendJob = null; restartTrendWorker(); }
       requestPersistentStorage().then(updateStorageStatus);
       $('#uploadPanel').classList.remove('hidden');
@@ -946,16 +993,16 @@
         storageFile: data.storageFile,
         trendFile: data.trendFile,
         trendVersion: 1,
+        storageVersion: Number(data.storageVersion || 1),
         rowCount: data.rowCount,
         sourceSize: entry.file.size,
         importedAt: new Date().toISOString()
       };
       const duplicate = catalog.find((report) => report.id === meta.id);
       if (duplicate) {
-        const updated = { ...duplicate, trendFile: meta.trendFile, trendVersion: 1 };
-        await putStoredReport(updated);
-        catalog = catalog.map((report) => report.id === updated.id ? updated : report);
-        job.imported.push(updated);
+        await deleteStoredReportFile(meta.storageFile);
+        await deleteStoredReportFile(meta.trendFile);
+        job.imported.push(duplicate);
         job.skipped++;
       } else {
         const sameWeek = catalog.filter((report) => report.site === meta.site && report.endDate === meta.endDate);
@@ -1034,7 +1081,7 @@
       catalog = (await getStoredReports()).filter((report) => report?.id && report?.storageFile && MARKETPLACES[report.site]).sort(newestFirst);
       await updateStorageStatus();
       if (!catalog.length) {
-        state.records = []; state.filtered = [];
+        state.records = []; state.filtered = []; state.totalFiltered = 0; state.paged = false;
         $('#uploadPanel').classList.remove('hidden');
         $('#workspace').classList.add('hidden');
         if (!$('#parseStatus').textContent) setImportStatus('报告仅保存在当前浏览器本地，可一次选择多份 CSV。');
@@ -1051,6 +1098,22 @@
       const comparison = catalog.find((report) => report.id === $('#compareReport').value);
       if (!primary) return;
       if (trendJob) { trendJob = null; restartTrendWorker(); }
+      if (queryJob) { queryJob = null; restartQueryWorker(); }
+      if (Number(primary.storageVersion || 1) >= 2) {
+        loadJob = null;
+        state.paged = true; state.newPeriod = primary; state.oldPeriod = comparison || null;
+        state.mode = comparison ? 'compare' : 'single'; state.fileName = primary.fileName;
+        state.records = []; state.filtered = []; state.totalFiltered = Number(primary.rowCount || 0);
+        state.page = 1; state.pageBeforeFilter = 1; state.filtering = false;
+        $('#workspace').classList.remove('hidden'); $('#workspace').setAttribute('aria-busy', 'true');
+        $('#uploadPanel').classList.add('hidden'); $('#dataRows').innerHTML = '';
+        $('#empty').classList.remove('hidden'); $('#empty').textContent = '正在从本地存储加载当前页…';
+        $('#pagination').classList.add('hidden');
+        $('#fileSummary').innerHTML = comparison ? `<strong>${escapeHtml(primary.label)}</strong> 对比 ${escapeHtml(comparison.label)} · ${MARKETPLACES[primary.site].name}` : `<strong>${escapeHtml(primary.fileName)}</strong> · ${escapeHtml(primary.label)}`;
+        updateReportHeader(); requestPagedData();
+        return;
+      }
+      state.paged = false;
       loadJob = { token: createToken(), reports: comparison ? [primary, comparison] : [primary], results: [], current: 0 };
       state.records = []; state.filtered = []; state.page = 1; state.pageBeforeFilter = 1; state.filtering = false;
       $('#workspace').classList.remove('hidden');
@@ -1089,6 +1152,7 @@
       }
       state.fileName = primary.fileName;
       state.filtered = state.records;
+      state.totalFiltered = state.filtered.length;
       $('#empty').textContent = '没有符合筛选条件的数据';
       $('#workspace').removeAttribute('aria-busy');
       updateReportHeader();
@@ -1135,9 +1199,42 @@
       updateStorageStatus();
     }
 
+    async function handleQueryMessage({ data }) {
+      if (!queryJob || data.token !== queryJob.token) return;
+      const job = queryJob;
+      if (data.type === 'query-progress') {
+        const percent = Math.round((data.count / Math.max(1, data.total)) * 100);
+        $('#storageStatus').textContent = `正在筛选本地数据 ${percent}% · ${Number(data.count).toLocaleString()} / ${Number(data.total).toLocaleString()} 条`;
+        return;
+      }
+      if (data.type === 'trend-migration' || data.type === 'trend-migration-progress') {
+        $('#storageStatus').textContent = data.type === 'trend-migration' ? `正在为对比周建立趋势索引：${data.label}` : `正在建立对比索引 · ${Number(data.count || 0).toLocaleString()} 条`;
+        return;
+      }
+      if (data.type === 'page-error') {
+        queryJob = null;
+        $('#workspace').removeAttribute('aria-busy');
+        $('#empty').textContent = `读取失败：${data.message}`; $('#empty').classList.remove('hidden');
+        $('#storageStatus').textContent = `读取失败：${data.message}`;
+        return;
+      }
+      if (data.type !== 'page-result') return;
+      queryJob = null;
+      for (const created of data.created || []) {
+        const report = catalog.find((item) => item.id === created.id);
+        if (!report) continue;
+        report.trendFile = created.trendFile; report.trendVersion = 1;
+        await putStoredReport(report);
+      }
+      state.records = data.rows || []; state.filtered = state.records; state.totalFiltered = Number(data.totalCount || 0);
+      $('#workspace').removeAttribute('aria-busy'); $('#empty').textContent = '没有符合筛选条件的数据';
+      renderPage(job.scrollToTop); updateStorageStatus();
+    }
+
     parser.onmessage = async ({ data }) => {
       if (importJob && data.token === importJob.token) {
-        if (data.type === 'progress') { setImportStatus(`正在解析第 ${data.index + 1}/${data.total} 份：${importJob.files[data.index].file.name} · ${data.count.toLocaleString()} 条`); $('#parseProgress').value = data.percent; return; }
+        if (data.type === 'progress') { setImportStatus(`正在解析第 ${data.index + 1}/${data.total} 份：${importJob.files[data.index].file.name} · ${data.count.toLocaleString()} 条`); $('#parseProgress').value = Math.round(data.percent * 0.85); return; }
+        if (data.type === 'index-stage') { setImportStatus(`正在建立第 ${importJob.current + 1}/${importJob.files.length} 份趋势索引 · ${data.stage}/${data.totalStages}`); $('#parseProgress').value = 85 + Math.round((data.stage / data.totalStages) * 15); return; }
         if (data.type === 'storage-progress') { setImportStatus(`正在压缩保存第 ${importJob.current + 1}/${importJob.files.length} 份 · ${data.count.toLocaleString()} / ${data.totalRecords.toLocaleString()} 条`); $('#parseProgress').value = Math.round((data.count / data.totalRecords) * 100); return; }
         if (data.type === 'index-progress') { setImportStatus(`正在建立第 ${importJob.current + 1}/${importJob.files.length} 份趋势索引 · ${data.count.toLocaleString()} / ${data.totalRecords.toLocaleString()} 条`); $('#parseProgress').value = Math.round((data.count / data.totalRecords) * 100); return; }
         if (data.type === 'error') { importError(`第 ${data.index + 1} 份文件处理失败：${data.message}`); return; }
@@ -1156,6 +1253,7 @@
       }
     };
     trendParser.onmessage = handleTrendMessage;
+    queryParser.onmessage = handleQueryMessage;
 
     $('#importInput').addEventListener('change', (event) => { startImport(event.target.files); event.target.value = ''; });
     FILTER_IDS.forEach((id) => $('#' + id).addEventListener('input', scheduleFilter));
