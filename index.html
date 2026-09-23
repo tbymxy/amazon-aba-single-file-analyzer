@@ -143,7 +143,7 @@
     <header class="topbar">
       <div class="logo">ABA</div>
       <h1>热门搜索词分析器</h1>
-      <span class="local-badge">本地持久化 · 1.9.1</span>
+      <span class="local-badge">本地持久化 · 1.9.2</span>
     </header>
     <input id="importInput" class="file-input" type="file" accept=".csv,text/csv" multiple />
     <section id="uploadPanel" class="upload-panel">
@@ -1092,27 +1092,39 @@
       return answer ? ALIASES[answer.trim().toUpperCase()] || null : null;
     }
 
-    async function quickFingerprint(file) {
-      if (!crypto.subtle) return null;
+    const fingerprintHex = (digest) => Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+
+    function joinFingerprintParts(parts) {
+      const length = parts.reduce((sum, part) => sum + part.byteLength, 0), joined = new Uint8Array(length);
+      let offset = 0;
+      for (const part of parts) { const bytes = part instanceof Uint8Array ? part : new Uint8Array(part); joined.set(bytes, offset); offset += bytes.byteLength; }
+      return joined;
+    }
+
+    async function sourceFingerprints(file) {
+      if (!crypto.subtle) return { legacy: null, strong: null };
       const sampleSize = 1024 * 1024;
-      let sample;
+      const sizeBytes = new TextEncoder().encode(String(file.size));
+      let legacySample, strongSample;
       if (file.size <= sampleSize * 2) {
-        sample = new Uint8Array(await file.arrayBuffer());
+        const whole = new Uint8Array(await file.arrayBuffer());
+        legacySample = whole;
+        strongSample = joinFingerprintParts([new TextEncoder().encode('ABA-FP2\0'), sizeBytes, new Uint8Array([0]), whole]);
       } else {
-        const [head, tail] = await Promise.all([
+        const middleSize = 256 * 1024;
+        const middleStart = (ratio) => Math.max(sampleSize, Math.min(file.size - sampleSize - middleSize, Math.floor(file.size * ratio - middleSize / 2)));
+        const [head, quarter, middle, threeQuarter, tail] = await Promise.all([
           file.slice(0, sampleSize).arrayBuffer(),
+          file.slice(middleStart(.25), middleStart(.25) + middleSize).arrayBuffer(),
+          file.slice(middleStart(.5), middleStart(.5) + middleSize).arrayBuffer(),
+          file.slice(middleStart(.75), middleStart(.75) + middleSize).arrayBuffer(),
           file.slice(file.size - sampleSize).arrayBuffer()
         ]);
-        const sizeBytes = new TextEncoder().encode(String(file.size));
-        sample = new Uint8Array(head.byteLength + tail.byteLength + sizeBytes.byteLength + 2);
-        sample.set(new Uint8Array(head), 0);
-        sample[head.byteLength] = 0;
-        sample.set(sizeBytes, head.byteLength + 1);
-        sample[head.byteLength + 1 + sizeBytes.byteLength] = 0;
-        sample.set(new Uint8Array(tail), head.byteLength + sizeBytes.byteLength + 2);
+        legacySample = joinFingerprintParts([head, new Uint8Array([0]), sizeBytes, new Uint8Array([0]), tail]);
+        strongSample = joinFingerprintParts([new TextEncoder().encode('ABA-FP2\0'), sizeBytes, new Uint8Array([0]), head, quarter, middle, threeQuarter, tail]);
       }
-      const digest = await crypto.subtle.digest('SHA-256', sample);
-      return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+      const [legacy, strong] = await Promise.all([crypto.subtle.digest('SHA-256', legacySample), crypto.subtle.digest('SHA-256', strongSample)]);
+      return { legacy: fingerprintHex(legacy), strong: fingerprintHex(strong) };
     }
 
     async function sourcePeriod(file) {
@@ -1125,9 +1137,18 @@
     function duplicateCandidates(entry, reports) {
       return reports.filter((report) => {
         if (report._integrity !== 'ok' || report.site !== entry.site || Number(report.sourceSize) !== entry.file.size) return false;
-        if (entry.sourceFingerprint && report.sourceFingerprint) return report.sourceFingerprint === entry.sourceFingerprint;
+        if (entry.sourceFingerprint && report.sourceFingerprint && report.sourceFingerprint !== entry.sourceFingerprint) return false;
+        if (entry.sourceFingerprintV2 && report.sourceFingerprintV2 && report.sourceFingerprintV2 !== entry.sourceFingerprintV2) return false;
+        if (entry.sourceFingerprint && report.sourceFingerprint) return true;
         return !report.sourceFingerprint && report.fileName === entry.file.name;
       });
+    }
+
+    function sameSourceIdentity(entry, report) {
+      if (report.fileName !== entry.file.name || Number(report.sourceLastModified) !== Number(entry.file.lastModified)) return false;
+      if (entry.period?.endDate && report.endDate && entry.period.endDate !== report.endDate) return false;
+      if (entry.sourceFingerprintV2 && report.sourceFingerprintV2) return entry.sourceFingerprintV2 === report.sourceFingerprintV2;
+      return Boolean(entry.sourceFingerprint && report.sourceFingerprint === entry.sourceFingerprint);
     }
 
     function fullFileHash(entry, index, total, preparation) {
@@ -1203,12 +1224,23 @@
         const entry = entries[index];
         setImportStatus(`正在检查第 ${index + 1}/${entries.length} 份：${entry.file.name}`);
         $('#parseProgress').value = Math.round(((index + 1) / entries.length) * 100);
-        [entry.sourceFingerprint, entry.period] = await Promise.all([quickFingerprint(entry.file), sourcePeriod(entry.file)]);
-        const batchKey = entry.sourceFingerprint
-          ? `${entry.site}|${entry.file.size}|${entry.sourceFingerprint}`
+        const [fingerprints, period] = await Promise.all([sourceFingerprints(entry.file), sourcePeriod(entry.file)]);
+        entry.sourceFingerprint = fingerprints.legacy; entry.sourceFingerprintV2 = fingerprints.strong; entry.period = period;
+        const batchKey = (entry.sourceFingerprintV2 || entry.sourceFingerprint)
+          ? `${entry.site}|${entry.file.size}|${entry.sourceFingerprintV2 || entry.sourceFingerprint}`
           : `${entry.site}|${entry.file.name}|${entry.file.size}|${entry.file.lastModified}`;
         const known = duplicateCandidates(entry, storedReports);
         const sameBatch = batchEntries.get(batchKey) || [];
+        const exactKnown = known.find((report) => sameSourceIdentity(entry, report));
+        const exactBatch = (entry.sourceFingerprintV2 || entry.sourceFingerprint) && sameBatch.find((previous) => previous.file.name === entry.file.name && Number(previous.file.lastModified) === Number(entry.file.lastModified));
+        if (exactKnown || exactBatch) {
+          if (exactKnown && entry.sourceFingerprintV2 && exactKnown.sourceFingerprintV2 !== entry.sourceFingerprintV2) {
+            const upgraded = { ...exactKnown, sourceFingerprintV2: entry.sourceFingerprintV2 };
+            await putStoredReport(upgraded); Object.assign(exactKnown, upgraded);
+          }
+          skipped++;
+          continue;
+        }
         if (known.length || sameBatch.length) {
           entry.fileHash = await fullFileHash(entry, index, entries.length, preparation);
           if (preparation.cancelled || importPreflight !== preparation) return;
@@ -1256,7 +1288,7 @@
       const entry = importJob.files[importJob.current];
       setImportStatus(`正在解析第 ${importJob.current + 1}/${importJob.files.length} 份：${entry.file.name}`);
       $('#parseProgress').value = 0;
-      parser.postMessage({ action: 'parse', file: entry.file, site: entry.site, index: importJob.current, total: importJob.files.length, token: importJob.token });
+      parser.postMessage({ action: 'parse', file: entry.file, site: entry.site, fileHash: entry.fileHash || null, index: importJob.current, total: importJob.files.length, token: importJob.token });
     }
 
     async function acceptImportedReport(data) {
@@ -1279,6 +1311,7 @@
         rowCount: data.rowCount,
         sourceSize: entry.file.size,
         sourceFingerprint: entry.sourceFingerprint,
+        sourceFingerprintV2: entry.sourceFingerprintV2,
         sourceLastModified: entry.file.lastModified,
         importedAt: new Date().toISOString()
       };
