@@ -108,6 +108,13 @@
     .storage-footer { display: flex; align-items: center; gap: 9px; margin-top: 12px; }
     .storage-footer .status { flex: 1; margin: 0; }
     .storage-footer .delete-button:disabled { opacity: .5; cursor: default; }
+    .backup-downloads { margin-top: 10px; padding: 10px 11px; border: 1px solid #d9e6e2; border-radius: 8px; color: #536b67; background: #f7fbfa; font-size: 11px; line-height: 1.55; }
+    .backup-downloads-header { display: flex; align-items: center; gap: 9px; }
+    .backup-downloads-header strong { color: #315c56; }
+    .backup-downloads-header button { margin-left: auto; }
+    .backup-file-links { max-height: 120px; margin-top: 8px; overflow: auto; display: flex; flex-wrap: wrap; gap: 5px 10px; }
+    .backup-file-links a { color: #176f87; text-decoration: none; }
+    .backup-file-links a:hover { text-decoration: underline; }
     .change { font-weight: 700; font-variant-numeric: tabular-nums; }
     .change.positive { color: #18835b; }
     .change.negative { color: #c24b52; }
@@ -136,7 +143,7 @@
     <header class="topbar">
       <div class="logo">ABA</div>
       <h1>热门搜索词分析器</h1>
-      <span class="local-badge">本地持久化 · 1.9.0</span>
+      <span class="local-badge">本地持久化 · 1.9.1</span>
     </header>
     <input id="importInput" class="file-input" type="file" accept=".csv,text/csv" multiple />
     <section id="uploadPanel" class="upload-panel">
@@ -195,11 +202,13 @@
   <div id="storageModal" class="trend-modal hidden" role="dialog" aria-modal="true" aria-labelledby="storageModalTitle">
     <div class="trend-dialog">
       <div class="trend-dialog-header"><h2 id="storageModalTitle">本地数据</h2><button id="closeStorageModal" type="button" aria-label="关闭">×</button></div>
-      <p class="storage-description">分析数据保存在浏览器私有存储中；源报告仍在电脑原位置，未复制到浏览器。可按站点查看、批量删除、清理孤立缓存，并将本地数据导出或从备份恢复。</p>
+      <p class="storage-description">分析数据保存在浏览器私有存储中；源报告仍在电脑原位置，未复制到浏览器。可按站点查看、批量删除、清理孤立缓存，并将本地数据导出或从备份恢复。Chrome / Edge 支持直接读写备份文件夹；Firefox 会使用可下载、可选择恢复的备份文件。</p>
       <div class="storage-location">浏览器私有存储 (OPFS) / aba-reports</div>
       <div class="storage-toolbar"><label>站点<select id="storageSiteFilter"><option value="">全部站点</option></select></label></div>
       <div class="storage-table-wrap"><table class="storage-table"><thead><tr><th class="select-column"><input id="storageSelectAll" type="checkbox" aria-label="全选当前站点报告"></th><th>站点</th><th>周次</th><th>源报告</th><th>分析数据</th><th>趋势索引</th></tr></thead><tbody id="storageFiles"></tbody></table></div>
-      <div class="storage-footer"><div id="storageModalStatus" class="status"></div><button id="deleteSelectedReports" class="delete-button" type="button" disabled>删除选中</button><button id="cleanupOrphans" class="reset-button" type="button" disabled>清理孤立缓存</button><button id="restoreStorage" class="reset-button" type="button">恢复备份</button><button id="exportStorage" class="file-button" type="button">导出备份</button><button id="closeStorageButton" class="reset-button" type="button">关闭</button></div>
+      <input id="restoreInput" class="file-input" type="file" accept=".aba-backup,.aba2,.bin,.gz,.json,application/json,application/x-tar" multiple />
+      <div id="backupDownloads" class="backup-downloads hidden"></div>
+      <div class="storage-footer"><div id="storageModalStatus" class="status"></div><button id="deleteSelectedReports" class="delete-button" type="button" disabled>删除选中</button><button id="cleanupOrphans" class="reset-button" type="button" disabled>清理孤立缓存</button><button id="restoreStorage" class="reset-button" type="button">恢复备份</button><button id="restoreStorageFile" class="reset-button hidden" type="button">选择备份文件</button><button id="exportStorage" class="file-button" type="button">导出备份</button><button id="closeStorageButton" class="reset-button" type="button">关闭</button></div>
     </div>
   </div>
   <script>
@@ -348,10 +357,11 @@
       const selectAll = $('#storageSelectAll');
       selectAll.checked = Boolean(checkboxes.length) && selected === checkboxes.length;
       selectAll.indeterminate = selected > 0 && selected < checkboxes.length;
-      selectAll.disabled = !checkboxes.length;
+      selectAll.disabled = backupBusy || !checkboxes.length;
       const deleteButton = $('#deleteSelectedReports');
-      deleteButton.disabled = selected === 0;
+      deleteButton.disabled = backupBusy || selected === 0;
       deleteButton.textContent = selected ? `删除选中（${selected}）` : '删除选中';
+      $('#cleanupOrphans').disabled = backupBusy || storageOrphans.length === 0;
     }
 
     function renderStoredData(message = '') {
@@ -399,6 +409,7 @@
     function closeStorageModal() { $('#storageModal').classList.add('hidden'); }
 
     async function deleteSelectedStoredReports() {
+      if (backupBusy) return;
       const ids = Array.from($$('.storage-select:checked'), (checkbox) => checkbox.value);
       if (!ids.length) return;
       const selected = storageRows.filter(({ report }) => ids.includes(report.id));
@@ -434,6 +445,7 @@
     }
 
     async function cleanupOrphanFiles() {
+      if (backupBusy) return;
       if (importPreflight || importJob) { window.alert('请先等待当前导入完成或取消导入，再清理孤立缓存。'); return; }
       if (!storageOrphans.length) return;
       if (!window.confirm(`确定清理 ${storageOrphans.length} 个没有报告目录引用的孤立缓存文件？\n\n这些文件通常由中断的导入或旧任务遗留。`)) return;
@@ -448,44 +460,189 @@
       await inspectStoredData(`已清理 ${deleted} 个孤立缓存${failed.length ? `，${failed.length} 个失败` : ''}`);
     }
 
-    async function copyFileHandle(sourceDirectory, destinationDirectory, name) {
-      const input = await (await sourceDirectory.getFileHandle(name)).getFile();
-      const output = await (await destinationDirectory.getFileHandle(name, { create: true })).createWritable();
+    const BACKUP_ARCHIVE_LIMIT = 512 * 1024 * 1024;
+    const BACKUP_README = 'Amazon ABA 本地持久化数据备份\r\n\r\n*.aba2 为流式二进制分析数据，*.jsonl.gz 为旧版压缩分析数据，*.trend.bin 为排名趋势索引，reports.json 为报告目录。\r\nChrome / Edge 可直接选择备份文件夹；Firefox 可选择 .aba-backup 单文件，或在独立文件备份文件夹中按 Ctrl+A 全选后恢复。请同时保留原始 CSV。\r\n';
+    let backupBusy = false;
+    let backupDownloadUrls = [];
+
+    function setBackupBusy(busy) {
+      backupBusy = busy;
+      ['restoreStorage', 'restoreStorageFile', 'exportStorage'].forEach((id) => { const element = $('#' + id); if (element) element.disabled = busy; });
+      if (busy) { $('#deleteSelectedReports').disabled = true; $('#cleanupOrphans').disabled = true; }
+    }
+
+    function releaseBackupDownloads() {
+      backupDownloadUrls.forEach((url) => URL.revokeObjectURL(url));
+      backupDownloadUrls = [];
+      $('#backupDownloads').replaceChildren();
+      $('#backupDownloads').classList.add('hidden');
+    }
+
+    function backupStamp() {
+      const now = new Date();
+      const part = (value) => String(value).padStart(2, '0');
+      return `${now.getFullYear()}${part(now.getMonth() + 1)}${part(now.getDate())}-${part(now.getHours())}${part(now.getMinutes())}${part(now.getSeconds())}`;
+    }
+
+    function triggerDownload(blob, name) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url; link.download = name; link.hidden = true;
+      document.body.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    }
+
+    function tarText(header, offset, length, value) {
+      const bytes = new TextEncoder().encode(String(value));
+      if (bytes.length > length) throw new Error(`备份文件名过长：${value}`);
+      header.set(bytes, offset);
+    }
+
+    function tarOctal(header, offset, length, value) {
+      const text = Math.max(0, Number(value) || 0).toString(8).padStart(length - 1, '0').slice(-(length - 1)) + '\0';
+      tarText(header, offset, length, text);
+    }
+
+    function tarHeader(name, size, modified = Date.now()) {
+      const header = new Uint8Array(512);
+      tarText(header, 0, 100, name); tarOctal(header, 100, 8, 0o644); tarOctal(header, 108, 8, 0); tarOctal(header, 116, 8, 0);
+      tarOctal(header, 124, 12, size); tarOctal(header, 136, 12, Math.floor(modified / 1000));
+      header.fill(32, 148, 156); header[156] = 48; tarText(header, 257, 6, 'ustar\0'); tarText(header, 263, 2, '00');
+      const checksum = header.reduce((sum, value) => sum + value, 0).toString(8).padStart(6, '0');
+      tarText(header, 148, 8, `${checksum}\0 `);
+      return header;
+    }
+
+    function createTarBackup(entries) {
+      const parts = [];
+      for (const entry of entries) {
+        parts.push(tarHeader(entry.name, entry.blob.size, entry.blob.lastModified || Date.now()), entry.blob);
+        const padding = (512 - (entry.blob.size % 512)) % 512;
+        if (padding) parts.push(new Uint8Array(padding));
+      }
+      parts.push(new Uint8Array(1024));
+      return new Blob(parts, { type: 'application/x-tar' });
+    }
+
+    function tarField(header, offset, length) {
+      const end = header.indexOf(0, offset);
+      return new TextDecoder().decode(header.slice(offset, end >= offset && end < offset + length ? end : offset + length)).trim();
+    }
+
+    async function tarBackupSource(file) {
+      const entries = new Map();
+      let offset = 0, entryCount = 0;
+      while (offset + 512 <= file.size) {
+        const header = new Uint8Array(await file.slice(offset, offset + 512).arrayBuffer());
+        if (header.every((value) => value === 0)) break;
+        const storedChecksum = Number.parseInt(tarField(header, 148, 8), 8);
+        const actualChecksum = header.reduce((sum, value, index) => sum + (index >= 148 && index < 156 ? 32 : value), 0);
+        if (!Number.isFinite(storedChecksum) || storedChecksum !== actualChecksum) throw new Error('备份包校验失败，文件可能已损坏。');
+        const prefix = tarField(header, 345, 155), rawName = `${prefix ? prefix + '/' : ''}${tarField(header, 0, 100)}`;
+        const name = rawName.replace(/\\/g, '/').split('/').filter(Boolean).at(-1);
+        const size = Number.parseInt(tarField(header, 124, 12) || '0', 8);
+        const start = offset + 512, end = start + size;
+        if (!name || !Number.isSafeInteger(size) || size < 0 || end > file.size) throw new Error('备份包目录无效。');
+        if ((header[156] === 0 || header[156] === 48) && entries.has(name)) throw new Error(`备份包含有重名文件：${name}`);
+        if (header[156] === 0 || header[156] === 48) entries.set(name, { start, end });
+        offset = end + ((512 - (size % 512)) % 512);
+        if (++entryCount > 20_000) throw new Error('备份包文件数超出限制。');
+      }
+      if (!entries.has('reports.json')) throw new Error('备份包中缺少 reports.json。');
+      return {
+        label: file.name,
+        async getFile(name) {
+          const entry = entries.get(name);
+          if (!entry) throw new DOMException(`备份中缺少 ${name}`, 'NotFoundError');
+          return file.slice(entry.start, entry.end);
+        }
+      };
+    }
+
+    async function selectedFilesBackupSource(fileList) {
+      const files = Array.from(fileList || []);
+      if (!files.length) throw new Error('请选择备份文件。');
+      const archives = files.filter((file) => file.name.toLowerCase().endsWith('.aba-backup'));
+      if (archives.length) {
+        if (archives.length !== 1 || files.length !== 1) throw new Error('恢复 .aba-backup 时请只选择一个备份包。');
+        return tarBackupSource(archives[0]);
+      }
+      const fileMap = new Map();
+      for (const file of files) {
+        if (fileMap.has(file.name)) throw new Error(`选中了重名文件：${file.name}`);
+        fileMap.set(file.name, file);
+      }
+      const manifests = files.filter((file) => file.name === 'reports.json' || /-reports\.json$/i.test(file.name));
+      if (manifests.length !== 1) throw new Error(manifests.length ? '请一次只选择一组备份文件。' : '缺少 reports.json；请进入备份文件夹后按 Ctrl+A 全选所有备份文件。');
+      fileMap.set('reports.json', manifests[0]);
+      return {
+        label: '已选备份文件',
+        async getFile(name) {
+          const file = fileMap.get(name);
+          if (!file) throw new DOMException(`备份中缺少 ${name}`, 'NotFoundError');
+          return file;
+        }
+      };
+    }
+
+    async function directoryBackupSource(selected) {
+      let directory = selected;
+      try { await directory.getFileHandle('reports.json'); }
+      catch { directory = await selected.getDirectoryHandle('Amazon-ABA-本地数据'); }
+      return {
+        label: directory.name,
+        async getFile(name) { return (await directory.getFileHandle(name)).getFile(); }
+      };
+    }
+
+    async function copyBackupFile(source, destination, name) {
+      const input = await source.getFile(name);
+      const output = await (await destination.getFileHandle(name, { create: true })).createWritable();
       try { await input.stream().pipeTo(output); } catch (error) { try { await output.abort(); } catch {} throw error; }
     }
 
-    async function restoreStoredData() {
-      if (!window.showDirectoryPicker) { window.alert('当前浏览器不支持恢复文件夹，请使用最新版 Chrome 或 Edge。'); return; }
+    function validBackupDataName(name, type) {
+      if (typeof name !== 'string' || !name || name.length > 180 || /[\\/\0]/.test(name)) return false;
+      return type === 'analysis' ? /\.(?:aba2|jsonl\.gz)$/i.test(name) : /\.trend\.bin$/i.test(name);
+    }
+
+    async function restoreFromSource(source) {
+      if (backupBusy) return;
+      if (importPreflight || importJob) { window.alert('请先等待当前导入完成或取消导入，再恢复备份。'); return; }
+      setBackupBusy(true);
       try {
-        const selected = await window.showDirectoryPicker({ id: 'amazon-aba-restore-data', mode: 'read' });
-        let source = selected;
-        try { await source.getFileHandle('reports.json'); }
-        catch { source = await selected.getDirectoryHandle('Amazon-ABA-本地数据'); }
-        const manifestFile = await (await source.getFileHandle('reports.json')).getFile();
+        $('#storageModalStatus').className = 'status';
+        $('#storageModalStatus').textContent = `正在读取备份：${source.label}`;
+        const manifestFile = await source.getFile('reports.json');
+        if (manifestFile.size > 32 * 1024 * 1024) throw new Error('reports.json 过大，已拒绝读取。');
         const manifest = JSON.parse(await manifestFile.text());
-        if (!Array.isArray(manifest.reports)) throw new Error('reports.json 格式无效。');
+        if (!Array.isArray(manifest.reports) || manifest.reports.length > 20_000) throw new Error('reports.json 格式无效。');
+        if (!navigator.storage?.getDirectory) throw new Error('当前浏览器不支持 OPFS 本地存储。');
         const root = await navigator.storage.getDirectory();
         const destination = await root.getDirectoryHandle(REPORT_DIRECTORY, { create: true });
         const existing = await getStoredReports();
         let restored = 0, skipped = 0;
         const failed = [];
         for (let index = 0; index < manifest.reports.length; index++) {
-          const report = manifest.reports[index];
+          const report = { ...manifest.reports[index] };
           $('#storageModalStatus').textContent = `正在恢复 ${index + 1}/${manifest.reports.length}：${report?.site || ''} ${report?.label || ''}`;
-          if (!report?.id || !MARKETPLACES[report.site] || !report.storageFile) { failed.push(`第 ${index + 1} 份元数据无效`); continue; }
+          if (!report?.id || !MARKETPLACES[report.site] || !validBackupDataName(report.storageFile, 'analysis') || (report.trendFile && !validBackupDataName(report.trendFile, 'trend'))) { failed.push(`第 ${index + 1} 份元数据无效`); continue; }
           if (existing.some((item) => item.id === report.id)) { skipped++; continue; }
           const sameWeek = existing.filter((item) => item.site === report.site && item.endDate === report.endDate);
           if (sameWeek.length && !window.confirm(`${report.site} 站 ${report.label} 已有不同版本。\n\n确定使用备份版本替换当前版本吗？`)) { skipped++; continue; }
           const copied = [];
           try {
-            await copyFileHandle(source, destination, report.storageFile); copied.push(report.storageFile);
-            if (report.trendFile) { try { await copyFileHandle(source, destination, report.trendFile); copied.push(report.trendFile); } catch (error) { if (error?.name !== 'NotFoundError') throw error; report.trendFile = null; } }
+            await copyBackupFile(source, destination, report.storageFile); copied.push(report.storageFile);
+            if (report.trendFile) {
+              try { await copyBackupFile(source, destination, report.trendFile); copied.push(report.trendFile); }
+              catch (error) { if (error?.name !== 'NotFoundError') throw error; report.trendFile = null; }
+            }
             const integrity = await analysisIntegrity(report);
             if (integrity.status !== 'ok') throw new Error('分析数据缺失或损坏');
             for (const old of sameWeek) {
               await deleteStoredReportMeta(old.id);
-              await deleteStoredReportFile(old.storageFile);
-              await deleteStoredReportFile(old.trendFile);
+              if (old.storageFile !== report.storageFile) await deleteStoredReportFile(old.storageFile);
+              if (old.trendFile && old.trendFile !== report.trendFile) await deleteStoredReportFile(old.trendFile);
               const position = existing.findIndex((item) => item.id === old.id); if (position >= 0) existing.splice(position, 1);
             }
             const restoredReport = { ...report, importedAt: report.importedAt || new Date().toISOString() };
@@ -499,6 +656,18 @@
         await refreshCatalog();
         await inspectStoredData(`已恢复 ${restored} 份，跳过 ${skipped} 份${failed.length ? `，失败 ${failed.length} 份` : ''}`);
         if (failed.length) window.alert(`部分备份恢复失败：\n\n${failed.slice(0, 12).join('\n')}`);
+      } finally {
+        setBackupBusy(false);
+        updateStoredSelectionState();
+      }
+    }
+
+    async function restoreStoredData() {
+      if (backupBusy) return;
+      if (!window.showDirectoryPicker) { $('#restoreInput').click(); return; }
+      try {
+        const selected = await window.showDirectoryPicker({ id: 'amazon-aba-restore-data', mode: 'read' });
+        await restoreFromSource(await directoryBackupSource(selected));
       } catch (error) {
         if (error?.name === 'AbortError') return;
         $('#storageModalStatus').className = 'status error';
@@ -506,36 +675,104 @@
       }
     }
 
+    async function restoreStoredDataFromFiles(fileList) {
+      try { await restoreFromSource(await selectedFilesBackupSource(fileList)); }
+      catch (error) {
+        $('#storageModalStatus').className = 'status error';
+        $('#storageModalStatus').textContent = `恢复失败：${error.message || error}`;
+      }
+    }
+
+    function showMultiFileBackupDownloads(entries) {
+      releaseBackupDownloads();
+      const container = $('#backupDownloads');
+      const header = document.createElement('div'); header.className = 'backup-downloads-header';
+      header.innerHTML = `<strong>大型备份已拆分为 ${entries.length} 个文件</strong><span>Firefox 询问时请允许多文件下载</span>`;
+      const downloadAll = document.createElement('button'); downloadAll.type = 'button'; downloadAll.className = 'reset-button'; downloadAll.textContent = '下载全部'; header.appendChild(downloadAll);
+      const links = document.createElement('div'); links.className = 'backup-file-links';
+      for (const entry of entries) {
+        const url = URL.createObjectURL(entry.blob); backupDownloadUrls.push(url);
+        const link = document.createElement('a'); link.href = url; link.download = entry.name; link.textContent = entry.name; links.appendChild(link);
+      }
+      downloadAll.addEventListener('click', () => Array.from(links.querySelectorAll('a')).forEach((link, index) => window.setTimeout(() => link.click(), index * 160)));
+      container.append(header, links); container.classList.remove('hidden');
+    }
+
+    async function collectBackupEntries(source) {
+      const names = Array.from(new Set(catalog.flatMap((report) => [report.storageFile, report.trendFile]).filter(Boolean)));
+      const entries = [], missing = [];
+      for (let index = 0; index < names.length; index++) {
+        const name = names[index];
+        $('#storageModalStatus').textContent = `正在准备备份 ${index + 1}/${names.length}：${name}`;
+        try { entries.push({ name, blob: await (await source.getFileHandle(name)).getFile() }); }
+        catch (error) { if (error?.name === 'NotFoundError') missing.push(name); else throw error; }
+      }
+      const manifest = new Blob([JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), reports: catalog.map(persistedReport) }, null, 2)], { type: 'application/json' });
+      const readme = new Blob([BACKUP_README], { type: 'text/plain;charset=utf-8' });
+      entries.push({ name: 'reports.json', blob: manifest }, { name: '说明.txt', blob: readme });
+      return { entries, missing };
+    }
+
+    async function exportStoredDataForFirefox(source) {
+      const { entries, missing } = await collectBackupEntries(source);
+      const totalSize = entries.reduce((sum, entry) => sum + entry.blob.size, 0);
+      if (totalSize <= BACKUP_ARCHIVE_LIMIT) {
+        const fileName = `Amazon-ABA-本地数据-${backupStamp()}.aba-backup`;
+        $('#storageModalStatus').textContent = '正在生成备份包…';
+        triggerDownload(createTarBackup(entries), fileName);
+        $('#storageModalStatus').className = 'status';
+        $('#storageModalStatus').textContent = `已生成 ${fileName} · ${formatBytes(totalSize)}${missing.length ? ` · ${missing.length} 个缺失缓存未包含` : ''}`;
+      } else {
+        const stamp = backupStamp(), fileNames = new Map();
+        const dataEntries = entries.filter((entry) => entry.name !== 'reports.json' && entry.name !== '说明.txt').map((entry, index) => {
+          const extension = entry.name.toLowerCase().endsWith('.jsonl.gz') ? '.jsonl.gz' : entry.name.toLowerCase().endsWith('.trend.bin') ? '.trend.bin' : '.aba2';
+          const name = `Amazon-ABA-${stamp}-${String(index + 1).padStart(4, '0')}${extension}`;
+          fileNames.set(entry.name, name);
+          return { name, blob: entry.blob };
+        });
+        const reports = catalog.map((report) => {
+          const value = persistedReport(report);
+          value.storageFile = fileNames.get(value.storageFile) || value.storageFile;
+          if (value.trendFile) value.trendFile = fileNames.get(value.trendFile) || value.trendFile;
+          return value;
+        });
+        const splitEntries = [
+          ...dataEntries,
+          { name: `Amazon-ABA-${stamp}-reports.json`, blob: new Blob([JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), reports }, null, 2)], { type: 'application/json' }) },
+          { name: `Amazon-ABA-${stamp}-说明.txt`, blob: new Blob([BACKUP_README], { type: 'text/plain;charset=utf-8' }) }
+        ];
+        showMultiFileBackupDownloads(splitEntries);
+        $('#storageModalStatus').className = 'status';
+        $('#storageModalStatus').textContent = `备份共 ${formatBytes(totalSize)}，为避免超大单文件占用内存，请点击“下载全部”并将文件保存在同一文件夹。${missing.length ? `有 ${missing.length} 个缺失缓存未包含。` : ''}`;
+      }
+    }
+
     async function exportStoredData() {
-      if (!window.showDirectoryPicker) { window.alert('当前浏览器不支持直接导出文件夹，请使用最新版 Chrome 或 Edge。'); return; }
+      if (backupBusy) return;
       if (!catalog.length) { window.alert('尚未导入报告。'); return; }
+      if (importPreflight || importJob) { window.alert('请先等待当前导入完成或取消导入，再导出备份。'); return; }
+      setBackupBusy(true); releaseBackupDownloads();
       try {
-        const selected = await window.showDirectoryPicker({ id: 'amazon-aba-local-data', mode: 'readwrite' });
-        const destination = await selected.getDirectoryHandle('Amazon-ABA-本地数据', { create: true });
+        if (!navigator.storage?.getDirectory) throw new Error('当前浏览器不支持 OPFS 本地存储。');
         const root = await navigator.storage.getDirectory();
         const source = await root.getDirectoryHandle(REPORT_DIRECTORY, { create: true });
-        const names = Array.from(new Set(catalog.flatMap((report) => [report.storageFile, report.trendFile]).filter(Boolean)));
+        if (!window.showDirectoryPicker) { await exportStoredDataForFirefox(source); return; }
+        const selected = await window.showDirectoryPicker({ id: 'amazon-aba-local-data', mode: 'readwrite' });
+        const destination = await selected.getDirectoryHandle('Amazon-ABA-本地数据', { create: true });
+        const { entries, missing } = await collectBackupEntries(source);
         let copied = 0;
-        for (const name of names) {
-          $('#storageModalStatus').textContent = `正在导出 ${copied + 1}/${names.length}：${name}`;
-          try {
-            const input = await (await source.getFileHandle(name)).getFile();
-            const output = await (await destination.getFileHandle(name, { create: true })).createWritable();
-            await input.stream().pipeTo(output);
-            copied++;
-          } catch (error) { if (error?.name !== 'NotFoundError') throw error; }
+        for (const entry of entries) {
+          $('#storageModalStatus').textContent = `正在导出 ${copied + 1}/${entries.length}：${entry.name}`;
+          const output = await (await destination.getFileHandle(entry.name, { create: true })).createWritable();
+          try { await entry.blob.stream().pipeTo(output); copied++; } catch (error) { try { await output.abort(); } catch {} throw error; }
         }
-        const manifest = await (await destination.getFileHandle('reports.json', { create: true })).createWritable();
-        await manifest.write(new TextEncoder().encode(JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), reports: catalog.map(persistedReport) }, null, 2))); await manifest.close();
-        const readme = await (await destination.getFileHandle('说明.txt', { create: true })).createWritable();
-        await readme.write(new TextEncoder().encode('Amazon ABA 本地持久化数据备份\r\n\r\n*.aba2 为流式二进制分析数据，*.jsonl.gz 为旧版压缩分析数据，*.trend.bin 为排名趋势索引，reports.json 为报告目录。\r\n可在分析器的“本地数据 → 恢复备份”中选择本文件夹或其上级文件夹进行恢复。请同时保留原始 CSV。\r\n')); await readme.close();
         $('#storageModalStatus').className = 'status';
-        $('#storageModalStatus').textContent = `已导出 ${copied} 个数据文件到“${selected.name}\\Amazon-ABA-本地数据”，可在 Windows 资源管理器中查看。`;
+        $('#storageModalStatus').textContent = `已导出 ${copied} 个文件到“${selected.name}\\Amazon-ABA-本地数据”${missing.length ? `，${missing.length} 个缺失缓存未包含` : ''}。`;
       } catch (error) {
         if (error?.name === 'AbortError') return;
         $('#storageModalStatus').className = 'status error';
         $('#storageModalStatus').textContent = `导出失败：${error.message || error}`;
-      }
+      } finally { setBackupBusy(false); updateStoredSelectionState(); }
     }
 
     const workerUrl = './aba-worker.js';
@@ -1393,7 +1630,16 @@
     $('#storageFiles').addEventListener('change', (event) => { if (event.target.matches('.storage-select')) updateStoredSelectionState(); });
     $('#deleteSelectedReports').addEventListener('click', () => deleteSelectedStoredReports().catch((error) => { $('#storageModalStatus').className = 'status error'; $('#storageModalStatus').textContent = `删除失败：${error.message || error}`; }));
     $('#cleanupOrphans').addEventListener('click', () => cleanupOrphanFiles().catch((error) => { $('#storageModalStatus').className = 'status error'; $('#storageModalStatus').textContent = `清理失败：${error.message || error}`; }));
+    const supportsDirectoryPicker = typeof window.showDirectoryPicker === 'function';
+    if (supportsDirectoryPicker) $('#restoreStorageFile').classList.remove('hidden');
+    else {
+      $('#restoreStorage').textContent = '恢复备份文件';
+      $('#restoreStorage').title = '选择 .aba-backup，或进入独立文件备份文件夹后按 Ctrl+A 全选';
+      $('#exportStorage').title = '小型数据库下载为单个备份包，大型数据库按文件下载';
+    }
     $('#restoreStorage').addEventListener('click', restoreStoredData);
+    $('#restoreStorageFile').addEventListener('click', () => $('#restoreInput').click());
+    $('#restoreInput').addEventListener('change', (event) => { restoreStoredDataFromFiles(event.target.files); event.target.value = ''; });
     $('#exportStorage').addEventListener('click', exportStoredData);
     $('#closeStorageModal').addEventListener('click', closeStorageModal);
     $('#closeStorageButton').addEventListener('click', closeStorageModal);
