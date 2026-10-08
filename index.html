@@ -143,7 +143,7 @@
     <header class="topbar">
       <div class="logo">ABA</div>
       <h1>热门搜索词分析器</h1>
-      <span class="local-badge">本地持久化 · 1.9.3</span>
+      <span class="local-badge">本地持久化 · 1.10.0</span>
     </header>
     <input id="importInput" class="file-input" type="file" accept=".csv,text/csv" multiple />
     <section id="uploadPanel" class="upload-panel">
@@ -224,6 +224,8 @@
     const ALIASES = { UK: 'GB', US: 'US', CA: 'CA', MX: 'MX', GB: 'GB', DE: 'DE', FR: 'FR', IT: 'IT', ES: 'ES', JP: 'JP', AU: 'AU' };
     const state = { records: [], filtered: [], totalFiltered: 0, paged: false, fileName: '', mode: 'single', newPeriod: null, oldPeriod: null, sorts: [], page: 1, pageBeforeFilter: 1, filtering: false, filterTimer: 0 };
     const FILTER_IDS = ['keyword', 'rankMin', 'rankMax', 'clickMax', 'conversionMax', 'changeMin', 'changeMax'];
+    const VIEW_STATE_KEY = 'amazon-aba-view-state-v1';
+    const SORT_KEYS = new Set(['newRank', 'oldRank', 'change']);
     const $ = (selector) => document.querySelector(selector);
     const $$ = (selector) => document.querySelectorAll(selector);
     const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
@@ -248,6 +250,73 @@
     let storageRows = [];
     let storageOrphans = [];
     const trendCache = new Map();
+    let activeViewSite = '';
+    let viewStateTimer = 0;
+    let viewPreferences = (() => {
+      try {
+        const saved = JSON.parse(localStorage.getItem(VIEW_STATE_KEY) || 'null');
+        if (saved?.version === 1 && saved.sites && typeof saved.sites === 'object') return saved;
+      } catch {}
+      return { version: 1, activeSite: '', sites: {} };
+    })();
+
+    function validSorts(sorts) {
+      if (!Array.isArray(sorts)) return [];
+      const seen = new Set(), result = [];
+      for (const sort of sorts) {
+        if (!sort || !SORT_KEYS.has(sort.key) || !['asc', 'desc'].includes(sort.direction) || seen.has(sort.key)) continue;
+        seen.add(sort.key); result.push({ key: sort.key, direction: sort.direction });
+      }
+      return result;
+    }
+
+    function hasFilters(filters = filterSnapshot()) {
+      return Boolean(filters.keyword) || ['rankMin', 'rankMax', 'clickMax', 'conversionMax', 'changeMin', 'changeMax'].some((key) => filters[key] != null);
+    }
+
+    function siteViewSnapshot() {
+      const current = catalog.find((report) => report.id === $('#currentReport').value);
+      const comparison = catalog.find((report) => report.id === $('#compareReport').value);
+      return {
+        rangeStart: $('#rangeStart').value || '', rangeEnd: $('#rangeEnd').value || '',
+        currentReportId: current?.id || '', currentReportEndDate: current?.endDate || '',
+        compareReportId: comparison?.id || '', compareReportEndDate: comparison?.endDate || '',
+        filters: Object.fromEntries(FILTER_IDS.map((id) => [id, $('#' + id).value])),
+        sorts: validSorts(state.sorts),
+        page: Math.max(1, Math.trunc(Number(state.page) || 1)),
+        pageBeforeFilter: Math.max(1, Math.trunc(Number(state.pageBeforeFilter) || 1))
+      };
+    }
+
+    function persistViewState(site = activeViewSite, activate = true) {
+      window.clearTimeout(viewStateTimer);
+      if (!site || !MARKETPLACES[site]) return;
+      viewPreferences.sites[site] = siteViewSnapshot();
+      if (activate) viewPreferences.activeSite = site;
+      try { localStorage.setItem(VIEW_STATE_KEY, JSON.stringify(viewPreferences)); } catch {}
+    }
+
+    function scheduleViewStateSave() {
+      window.clearTimeout(viewStateTimer);
+      viewStateTimer = window.setTimeout(() => persistViewState(), 80);
+    }
+
+    function savedViewForSite(site) {
+      const saved = viewPreferences.sites?.[site];
+      return saved && typeof saved === 'object' ? saved : null;
+    }
+
+    function restoreFilterValues(saved) {
+      FILTER_IDS.forEach((id) => { $('#' + id).value = saved?.filters && typeof saved.filters[id] === 'string' ? saved.filters[id] : ''; });
+    }
+
+    function nearestReportDate(reports, desired, fallback) {
+      if (!reports.length || !desired) return fallback;
+      if (reports.some((report) => report.endDate === desired)) return desired;
+      const target = Date.parse(desired);
+      if (!Number.isFinite(target)) return fallback;
+      return reports.reduce((best, report) => Math.abs(reportTime(report) - target) < Math.abs(reportTime(best) - target) ? report : best, reports[0]).endDate;
+    }
 
     function openDatabase() {
       if (databasePromise) return databasePromise;
@@ -888,14 +957,14 @@
       if (!state.paged || !state.newPeriod) return;
       if (queryJob) restartQueryWorker();
       const filters = filterSnapshot();
-      const hasFilters = Boolean(filters.keyword) || ['rankMin', 'rankMax', 'clickMax', 'conversionMax', 'changeMin', 'changeMax'].some((key) => filters[key] != null);
-      if (hasFilters && !state.filtering) state.pageBeforeFilter = state.page;
-      state.filtering = hasFilters;
+      const filtering = hasFilters(filters);
+      if (filtering && !state.filtering) state.pageBeforeFilter = state.page;
+      state.filtering = filtering;
       const token = createToken();
       const queryKey = JSON.stringify({ primary: state.newPeriod.id, comparison: state.oldPeriod?.id || '', filters, sorts: state.sorts });
       queryJob = { token, scrollToTop };
       $('#workspace').setAttribute('aria-busy', 'true');
-      $('#storageStatus').textContent = hasFilters || state.sorts.length ? '正在扫描本地索引并筛选…' : '正在读取当前页…';
+      $('#storageStatus').textContent = filtering || state.sorts.length ? '正在扫描本地索引并筛选…' : '正在读取当前页…';
       queryParser.postMessage({ action: 'query-page', token, primary: state.newPeriod, comparison: state.oldPeriod, filters, sorts: state.sorts, page: state.page, pageSize: RECORDS_PER_PAGE, queryKey });
     }
 
@@ -977,6 +1046,7 @@
       state.page = 1;
       if (!state.filtering) state.pageBeforeFilter = 1;
       updateSortIndicators();
+      scheduleViewStateSave();
       if (state.paged) requestPagedData(true);
       else { state.filtered = sortRows(state.filtered, true); renderPage(true); }
     }
@@ -1018,6 +1088,7 @@
       renderPagination(totalPages);
       requestAnimationFrame(requestVisibleTrends);
       if (scrollToTop) $('.grid').scrollIntoView({ block: 'start' });
+      scheduleViewStateSave();
     }
 
     function goToPage(page) {
@@ -1027,16 +1098,20 @@
       state.page = Math.min(totalPages, Math.max(1, Math.trunc(page)));
       if (!state.filtering) state.pageBeforeFilter = state.page;
       $('#pageInput').value = '';
+      scheduleViewStateSave();
       if (state.paged) requestPagedData(true); else renderPage(true);
     }
 
-    function applyFilters() {
+    function applyFilters({ preservePage = false } = {}) {
       if (state.paged) {
         const filters = filterSnapshot();
-        const hasFilters = Boolean(filters.keyword) || ['rankMin', 'rankMax', 'clickMax', 'conversionMax', 'changeMin', 'changeMax'].some((key) => filters[key] != null);
-        if (hasFilters && !state.filtering) state.pageBeforeFilter = state.page;
-        state.page = hasFilters ? 1 : (state.filtering ? state.pageBeforeFilter : state.page);
-        state.filtering = hasFilters;
+        const filtering = hasFilters(filters);
+        if (!preservePage) {
+          if (filtering && !state.filtering) state.pageBeforeFilter = state.page;
+          state.page = filtering ? 1 : (state.filtering ? state.pageBeforeFilter : state.page);
+        }
+        state.filtering = filtering;
+        scheduleViewStateSave();
         requestPagedData();
         return;
       }
@@ -1045,11 +1120,11 @@
       const clickMax = numberOrNull($('#clickMax').value), conversionMax = numberOrNull($('#conversionMax').value);
       const changeMin = state.mode === 'compare' ? numberOrNull($('#changeMin').value) : null;
       const changeMax = state.mode === 'compare' ? numberOrNull($('#changeMax').value) : null;
-      const hasFilters = Boolean(keyword) || rankMin != null || rankMax != null || clickMax != null || conversionMax != null || changeMin != null || changeMax != null;
-      if (hasFilters && !state.filtering) state.pageBeforeFilter = state.page;
+      const filtering = Boolean(keyword) || rankMin != null || rankMax != null || clickMax != null || conversionMax != null || changeMin != null || changeMax != null;
+      if (!preservePage && filtering && !state.filtering) state.pageBeforeFilter = state.page;
       state.filtered = sortRows(state.records.filter((row) => (!keyword || row.searchKey.includes(keyword)) && (rankMin == null || row.newRank >= rankMin) && (rankMax == null || row.newRank <= rankMax) && (clickMax == null || row.top3Click <= clickMax) && (conversionMax == null || row.top3Conversion <= conversionMax) && (changeMin == null || row.change >= changeMin) && (changeMax == null || row.change <= changeMax)));
-      state.page = hasFilters ? 1 : (state.filtering ? state.pageBeforeFilter : state.page);
-      state.filtering = hasFilters;
+      if (!preservePage) state.page = filtering ? 1 : (state.filtering ? state.pageBeforeFilter : state.page);
+      state.filtering = filtering;
       renderPage();
     }
     function scheduleFilter() { window.clearTimeout(state.filterTimer); state.filterTimer = window.setTimeout(applyFilters, state.paged ? 450 : 160); }
@@ -1355,15 +1430,15 @@
       importJob = null;
       setImportBusy(false);
       $('#parseProgress').classList.add('hidden');
-      const imported = [...job.imported].sort(newestFirst);
       const suffix = job.skipped ? `，跳过 ${job.skipped} 份` : '';
       const failedSuffix = job.failed.length ? `，失败 ${job.failed.length} 份` : '';
       setImportStatus(`导入完成：${job.addedCount} 份新报告${suffix}${failedSuffix}`, job.failed.length > 0);
-      let primaryId = null, compareId = null;
-      if (job.mode === 'single') primaryId = imported[0]?.id || null;
-      if (job.mode === 'compare' && imported.length === 2) { primaryId = imported[0].id; compareId = imported[1].id; }
-      if (job.mode !== 'compare') $('#compareReport').value = '';
-      await refreshCatalog({ primaryId, compareId });
+      if (!activeViewSite) {
+        const imported = [...job.imported].sort(newestFirst);
+        const primaryId = imported[0]?.id || null;
+        const compareId = job.mode === 'compare' && imported.length === 2 ? imported[1].id : null;
+        await refreshCatalog({ primaryId, compareId });
+      } else await refreshCatalog();
       if (job.failed.length) window.alert(`以下文件处理失败，其他文件已继续导入：\n\n${job.failed.slice(0, 12).join('\n')}`);
     }
 
@@ -1398,22 +1473,41 @@
       fillSelect($('#compareReport'), older, compareId || $('#compareReport').value, true);
     }
 
-    function rebuildSiteView({ primaryId = null, compareId = null, site = null } = {}) {
+    function rebuildSiteView({ primaryId = null, compareId = null, site = null, restoreState = true } = {}) {
       const primary = catalog.find((report) => report.id === primaryId);
-      const desiredSite = primary?.site || site || $('#marketplace').value || catalog[0]?.site;
+      const preferredSite = restoreState ? viewPreferences.activeSite : '';
+      const desiredSite = primary?.site || site || preferredSite || $('#marketplace').value || catalog[0]?.site;
       const sites = Object.keys(MARKETPLACES).filter((code) => catalog.some((report) => report.site === code));
       $('#marketplace').innerHTML = sites.map((code) => `<option value="${code}">${code} · ${MARKETPLACES[code].name}</option>`).join('');
       $('#marketplace').value = sites.includes(desiredSite) ? desiredSite : sites[0];
       const reports = catalog.filter((report) => report.site === $('#marketplace').value).sort(oldestFirst);
+      const saved = restoreState ? savedViewForSite($('#marketplace').value) : null;
       const rangeOptions = reports.map((report) => `<option value="${report.endDate}">${escapeHtml(report.label)}</option>`).join('');
       $('#rangeStart').innerHTML = rangeOptions;
       $('#rangeEnd').innerHTML = rangeOptions;
-      $('#rangeStart').value = reports[0]?.endDate || '';
-      $('#rangeEnd').value = reports.at(-1)?.endDate || '';
-      rebuildReportSelectors(primaryId, compareId);
+      let rangeStart = nearestReportDate(reports, saved?.rangeStart, reports[0]?.endDate || '');
+      let rangeEnd = nearestReportDate(reports, saved?.rangeEnd, reports.at(-1)?.endDate || '');
+      if (rangeStart > rangeEnd) [rangeStart, rangeEnd] = [rangeEnd, rangeStart];
+      $('#rangeStart').value = rangeStart;
+      $('#rangeEnd').value = rangeEnd;
+      const visible = reports.filter((report) => report.endDate >= rangeStart && report.endDate <= rangeEnd).sort(newestFirst);
+      let desiredPrimary = visible.find((report) => report.id === primaryId) || visible.find((report) => report.id === saved?.currentReportId);
+      if (!desiredPrimary && saved?.currentReportEndDate) desiredPrimary = visible.reduce((best, report) => Math.abs(reportTime(report) - Date.parse(saved.currentReportEndDate)) < Math.abs(reportTime(best) - Date.parse(saved.currentReportEndDate)) ? report : best, visible[0]);
+      desiredPrimary ||= visible[0];
+      const older = desiredPrimary ? visible.filter((report) => report._integrity === 'ok' && report.endDate < desiredPrimary.endDate) : [];
+      let desiredComparison = older.find((report) => report.id === compareId) || older.find((report) => report.id === saved?.compareReportId);
+      if (!desiredComparison && saved?.compareReportEndDate && older.length) desiredComparison = older.reduce((best, report) => Math.abs(reportTime(report) - Date.parse(saved.compareReportEndDate)) < Math.abs(reportTime(best) - Date.parse(saved.compareReportEndDate)) ? report : best, older[0]);
+      rebuildReportSelectors(desiredPrimary?.id || null, desiredComparison?.id || null);
+      restoreFilterValues(saved);
+      state.sorts = validSorts(saved?.sorts);
+      state.page = Math.max(1, Math.trunc(Number(saved?.page) || 1));
+      state.pageBeforeFilter = Math.max(1, Math.trunc(Number(saved?.pageBeforeFilter) || state.page));
+      activeViewSite = $('#marketplace').value;
+      viewPreferences.activeSite = activeViewSite;
     }
 
     async function refreshCatalog(options = {}) {
+      if (activeViewSite) persistViewState(activeViewSite);
       catalog = (await annotateIntegrity((await getStoredReports()).filter((report) => report?.id && report?.storageFile && MARKETPLACES[report.site]))).sort(newestFirst);
       await updateStorageStatus();
       if (!catalog.length) {
@@ -1424,12 +1518,13 @@
         return;
       }
       const fallback = catalog.find((report) => report._integrity === 'ok') || catalog[0];
-      const siteFallback = options.site ? catalog.find((report) => report.site === options.site) : null;
-      rebuildSiteView({ primaryId: options.primaryId || siteFallback?.id || fallback.id, compareId: options.compareId || null, site: options.site });
-      await loadSelectedReports();
+      const requestedSite = options.site && catalog.some((report) => report.site === options.site) ? options.site : null;
+      const initialSite = viewPreferences.activeSite && catalog.some((report) => report.site === viewPreferences.activeSite) ? null : fallback.site;
+      rebuildSiteView({ primaryId: options.primaryId || null, compareId: options.compareId || null, site: requestedSite || initialSite, restoreState: true });
+      await loadSelectedReports({ preserveViewState: true });
     }
 
-    async function loadSelectedReports() {
+    async function loadSelectedReports({ preserveViewState = false } = {}) {
       const primary = catalog.find((report) => report.id === $('#currentReport').value);
       const comparison = catalog.find((report) => report.id === $('#compareReport').value);
       if (!primary) return;
@@ -1451,19 +1546,26 @@
         state.mode = activeComparison ? 'compare' : 'single'; state.fileName = primary.fileName;
         if (!activeComparison) state.sorts = state.sorts.filter((sort) => sort.key === 'newRank');
         state.records = []; state.filtered = []; state.totalFiltered = Number(primary.rowCount || 0);
-        state.page = 1; state.pageBeforeFilter = 1; state.filtering = false;
+        if (!preserveViewState) { state.page = 1; state.pageBeforeFilter = 1; }
+        state.page = Math.max(1, Math.trunc(Number(state.page) || 1));
+        state.pageBeforeFilter = Math.max(1, Math.trunc(Number(state.pageBeforeFilter) || state.page));
+        state.filtering = hasFilters();
         $('#workspace').classList.remove('hidden'); $('#workspace').setAttribute('aria-busy', 'true');
         $('#uploadPanel').classList.add('hidden'); $('#dataRows').innerHTML = '';
         $('#empty').classList.remove('hidden'); $('#empty').textContent = '正在从本地存储加载当前页…';
         $('#pagination').classList.add('hidden');
         $('#fileSummary').innerHTML = activeComparison ? `<strong>${escapeHtml(primary.label)}</strong> 对比 ${escapeHtml(activeComparison.label)} · ${MARKETPLACES[primary.site].name}` : `<strong>${escapeHtml(primary.fileName)}</strong> · ${escapeHtml(primary.label)}`;
-        updateReportHeader(); requestPagedData();
+        updateReportHeader(); persistViewState(); requestPagedData();
         return;
       }
       state.paged = false;
       if (!activeComparison) state.sorts = state.sorts.filter((sort) => sort.key === 'newRank');
-      loadJob = { token: createToken(), reports: activeComparison ? [primary, activeComparison] : [primary], results: [], current: 0 };
-      state.records = []; state.filtered = []; state.page = 1; state.pageBeforeFilter = 1; state.filtering = false;
+      loadJob = { token: createToken(), reports: activeComparison ? [primary, activeComparison] : [primary], results: [], current: 0, preserveViewState };
+      state.records = []; state.filtered = [];
+      if (!preserveViewState) { state.page = 1; state.pageBeforeFilter = 1; }
+      state.page = Math.max(1, Math.trunc(Number(state.page) || 1));
+      state.pageBeforeFilter = Math.max(1, Math.trunc(Number(state.pageBeforeFilter) || state.page));
+      state.filtering = hasFilters();
       $('#workspace').classList.remove('hidden');
       $('#workspace').setAttribute('aria-busy', 'true');
       $('#uploadPanel').classList.add('hidden');
@@ -1505,7 +1607,7 @@
       $('#workspace').removeAttribute('aria-busy');
       updateReportHeader();
       updateStorageStatus();
-      requestAnimationFrame(() => applyFilters());
+      requestAnimationFrame(() => applyFilters({ preservePage: job.preserveViewState }));
     }
 
     async function handleTrendMessage({ data }) {
@@ -1576,7 +1678,15 @@
         report.trendFile = created.trendFile; report.trendVersion = 1;
         await putStoredReport(report);
       }
-      state.records = data.rows || []; state.filtered = state.records; state.totalFiltered = Number(data.totalCount || 0);
+      state.totalFiltered = Number(data.totalCount || 0);
+      const totalPages = Math.max(1, Math.ceil(state.totalFiltered / RECORDS_PER_PAGE));
+      if (state.page > totalPages) {
+        state.page = totalPages;
+        scheduleViewStateSave();
+        requestPagedData();
+        return;
+      }
+      state.records = data.rows || []; state.filtered = state.records;
       $('#workspace').removeAttribute('aria-busy'); $('#empty').textContent = '没有符合筛选条件的数据';
       renderPage(job.scrollToTop); updateStorageStatus();
     }
@@ -1652,7 +1762,13 @@
     $('#cancelImport').addEventListener('click', () => cancelImport().catch((error) => importError(`取消导入失败：${error.message || error}`)));
     FILTER_IDS.forEach((id) => $('#' + id).addEventListener('input', scheduleFilter));
     $('#resetFilters').addEventListener('click', () => { window.clearTimeout(state.filterTimer); FILTER_IDS.forEach((id) => { $('#' + id).value = ''; }); applyFilters(); });
-    $('#marketplace').addEventListener('change', () => { rebuildSiteView({ site: $('#marketplace').value }); loadSelectedReports(); });
+    $('#marketplace').addEventListener('change', () => {
+      const nextSite = $('#marketplace').value;
+      if (activeViewSite) persistViewState(activeViewSite, false);
+      viewPreferences.activeSite = nextSite;
+      rebuildSiteView({ site: nextSite, restoreState: true });
+      loadSelectedReports({ preserveViewState: true }).catch((error) => importError(`切换站点失败：${error.message || error}`));
+    });
     $('#rangeStart').addEventListener('change', () => { if ($('#rangeStart').value > $('#rangeEnd').value) $('#rangeEnd').value = $('#rangeStart').value; rebuildReportSelectors(); loadSelectedReports(); });
     $('#rangeEnd').addEventListener('change', () => { if ($('#rangeEnd').value < $('#rangeStart').value) $('#rangeStart').value = $('#rangeEnd').value; rebuildReportSelectors(); loadSelectedReports(); });
     $('#currentReport').addEventListener('change', () => { rebuildReportSelectors($('#currentReport').value); loadSelectedReports(); });
@@ -1684,6 +1800,8 @@
     });
     $('#pageGo').addEventListener('click', () => goToPage(Number($('#pageInput').value)));
     $('#pageInput').addEventListener('keydown', (event) => { if (event.key === 'Enter') goToPage(Number(event.currentTarget.value)); });
+    window.addEventListener('pagehide', () => persistViewState());
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') persistViewState(); });
     $('#dataRows').addEventListener('mousemove', (event) => { const canvas = event.target.closest('canvas.trend-canvas'); if (canvas) showTrendTooltip(canvas, event.clientX, event.clientY); else $('#trendTooltip').classList.add('hidden'); });
     $('#dataRows').addEventListener('mouseleave', () => $('#trendTooltip').classList.add('hidden'));
     $('#dataRows').addEventListener('click', (event) => { const canvas = event.target.closest('canvas.trend-canvas'); if (canvas) openTrendModal(canvas); });

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'amazon-aba-pwa-v1.9.3';
+const CACHE_NAME = 'amazon-aba-pwa-v1.10.0';
 const APP_SHELL = ['./', './index.html', './aba-worker.js', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {
